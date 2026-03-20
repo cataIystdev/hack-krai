@@ -20,9 +20,9 @@ services:
     ports:
       - "${PORT:-8080}:8080"
     env_file:
-      - .env
+      - .env.api
     volumes:
-      - ./.env:/.env:ro
+      - ./.env.api:/.env:ro
     depends_on:
       - postgres
       - redis
