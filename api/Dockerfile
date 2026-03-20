@@ -26,6 +26,9 @@ RUN apk --no-cache add ca-certificates tzdata
 # Копируем бинарник из билдера
 COPY --from=builder /app/kudytudy-api .
 
+# Копируем SQL-миграции для автоматического применения при старте
+COPY --from=builder /app/migrations ./migrations
+
 # По умолчанию API работает на порту 8080 (или берется из .env)
 EXPOSE 8080
 
