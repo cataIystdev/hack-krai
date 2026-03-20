@@ -58,7 +58,15 @@ func OpenAPISpec(baseURL string) map[string]any {
 			},
 			{
 				"name":        "Профилирование",
-				"description": "Мультимодальный пайплайн профилирования туриста. Голосовой ввод (Whisper STT), извлечение осей предпочтений (LLM), генерация vibe-вектора (Embeddings), свайп-анкета и поиск рекомендаций.",
+				"description": "Мультимодальный пайплайн профилирования туриста. Голосовой ввод (Vosk STT), извлечение осей предпочтений (LLM), генерация vibe-вектора (Embeddings), свайп-анкета, vibe passport и поиск рекомендаций.",
+			},
+			{
+				"name":        "Карта",
+				"description": "Эндпоинты для работы с интерактивной картой Краснодарского края. Пространственный поиск локаций по bounding box через PostGIS.",
+			},
+			{
+				"name":        "Маршруты",
+				"description": "Построение маршрутов между локациями с расчётом расстояния (Haversine) и времени в пути. Demo-режим без внешних API.",
 			},
 		},
 		"paths": map[string]any{
@@ -620,7 +628,7 @@ func OpenAPISpec(baseURL string) map[string]any {
 				"post": map[string]any{
 					"tags":        []string{"Профилирование"},
 					"summary":     "Голосовое профилирование",
-					"description": "Загрузка аудиозаписи для построения vibe-профиля. Пайплайн: Whisper STT -> LLM (оси) -> Embeddings (3072d) -> Qdrant upsert.",
+					"description": "Загрузка аудиозаписи для построения vibe-профиля. Пайплайн: Vosk STT -> LLM (оси) -> Embeddings (3072d) -> Qdrant upsert.\n\nВозвращает screenshot-ready vibe passport: вложенные оси, заголовок паспорта, теги и время обработки.\n\nВ mock-режиме (AI_API_KEY пуст) ответ детерминированный с controlled latency 2 секунды.",
 					"operationId": "voiceProfile",
 					"security":    []map[string]any{{"BearerAuth": []string{}}},
 					"requestBody": map[string]any{
@@ -638,9 +646,23 @@ func OpenAPISpec(baseURL string) map[string]any {
 						},
 					},
 					"responses": map[string]any{
-						"201": map[string]any{"description": "Профиль создан. Возвращает оси, теги, summary и vector_id."},
+						"201": map[string]any{
+							"description": "Профиль создан. Возвращает vibe passport с осями, тегами, summary, заголовком и vector_id.",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{
+										"type": "object",
+										"properties": map[string]any{
+											"success": map[string]any{"type": "boolean", "example": true},
+											"data":    map[string]any{"$ref": "#/components/schemas/VoiceProfileResponse"},
+										},
+									},
+								},
+							},
+						},
 						"400": map[string]any{"description": "Аудиофайл не передан."},
 						"401": map[string]any{"description": "Отсутствует или невалидный токен."},
+						"500": map[string]any{"description": "Аудио не распознано, ошибка STT/LLM/Embeddings."},
 					},
 				},
 			},
@@ -689,6 +711,81 @@ func OpenAPISpec(baseURL string) map[string]any {
 					"security":    []map[string]any{{"BearerAuth": []string{}}},
 					"responses": map[string]any{
 						"200": map[string]any{"description": "Массив сцен с id, title, description, image_url, display_order."},
+						"401": map[string]any{"description": "Отсутствует или невалидный токен."},
+					},
+				},
+			},
+			"/api/v1/map/locations": map[string]any{
+				"get": map[string]any{
+					"tags":        []string{"Карта"},
+					"summary":     "Локации для карты",
+					"description": "Возвращает локации для отображения на интерактивной карте. Поддерживает фильтрацию по bounding box (min_lat, max_lat, min_lon, max_lon) через PostGIS ST_Within.\n\nВсе координаты в формате WGS84 (EPSG:4326). По умолчанию возвращает до 100 локаций.",
+					"operationId": "getMapLocations",
+					"security":    []map[string]any{{"BearerAuth": []string{}}},
+					"parameters": []map[string]any{
+						{"name": "min_lat", "in": "query", "schema": map[string]any{"type": "number"}, "description": "Минимальная широта bounding box.", "example": 43.5},
+						{"name": "max_lat", "in": "query", "schema": map[string]any{"type": "number"}, "description": "Максимальная широта bounding box.", "example": 45.5},
+						{"name": "min_lon", "in": "query", "schema": map[string]any{"type": "number"}, "description": "Минимальная долгота bounding box.", "example": 36.5},
+						{"name": "max_lon", "in": "query", "schema": map[string]any{"type": "number"}, "description": "Максимальная долгота bounding box.", "example": 41.0},
+						{"name": "category", "in": "query", "schema": map[string]any{"type": "string"}, "description": "Фильтр по категории.", "example": "winery"},
+						{"name": "limit", "in": "query", "schema": map[string]any{"type": "integer", "default": 100}, "description": "Максимальное количество точек."},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Массив точек для карты.",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{
+										"type": "object",
+										"properties": map[string]any{
+											"success": map[string]any{"type": "boolean"},
+											"data": map[string]any{
+												"type": "object",
+												"properties": map[string]any{
+													"points": map[string]any{"type": "array", "items": map[string]any{"$ref": "#/components/schemas/MapPoint"}},
+													"total":  map[string]any{"type": "integer"},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+						"401": map[string]any{"description": "Отсутствует или невалидный токен."},
+					},
+				},
+			},
+			"/api/v1/route/build": map[string]any{
+				"post": map[string]any{
+					"tags":        []string{"Маршруты"},
+					"summary":     "Построение маршрута",
+					"description": "Строит маршрут через указанные локации с расчётом расстояния (Haversine) и предполагаемого времени в пути.\n\nDemo-режим: используются прямые расстояния и настраиваемые скорости по типу транспорта. Полная маршрутизация через Neo4j запланирована в будущих фазах.",
+					"operationId": "buildRoute",
+					"security":    []map[string]any{{"BearerAuth": []string{}}},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/BuildRouteRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Маршрут построен.",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{
+										"type": "object",
+										"properties": map[string]any{
+											"success": map[string]any{"type": "boolean"},
+											"data":    map[string]any{"$ref": "#/components/schemas/RoutePreview"},
+										},
+									},
+								},
+							},
+						},
+						"400": map[string]any{"description": "Менее 2 location_ids или невалидные UUID."},
 						"401": map[string]any{"description": "Отсутствует или невалидный токен."},
 					},
 				},
@@ -1048,17 +1145,26 @@ func OpenAPISpec(baseURL string) map[string]any {
 				},
 				"VoiceProfileResponse": map[string]any{
 					"type":        "object",
-					"description": "Результат голосового профилирования.",
+					"description": "Результат голосового профилирования. Screenshot-ready формат для vibe passport.",
 					"properties": map[string]any{
-						"transcription":      map[string]any{"type": "string", "description": "Распознанный текст."},
-						"stress_level":       map[string]any{"type": "number", "description": "Уровень стресса (0-1)."},
-						"solitude_vs_social": map[string]any{"type": "number", "description": "Уединение vs социальность (0-1)."},
-						"budget_sensitivity": map[string]any{"type": "number", "description": "Чувствительность к бюджету (0-1)."},
-						"nature_vs_urban":    map[string]any{"type": "number", "description": "Природа vs город (0-1)."},
-						"adventure_level":    map[string]any{"type": "number", "description": "Уровень приключений (0-1)."},
-						"tags":               map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Теги предпочтений."},
-						"summary":            map[string]any{"type": "string", "description": "Краткое резюме."},
-						"vector_id":          map[string]any{"type": "string", "format": "uuid", "description": "ID вектора в Qdrant."},
+						"transcription":       map[string]any{"type": "string", "description": "Распознанный текст из аудио.", "example": "Мне нравится отдыхать на природе, подальше от города."},
+						"axes":                map[string]any{"$ref": "#/components/schemas/VibeAxes"},
+						"extracted_tags":      map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "3-8 семантических тегов предпочтений.", "example": []string{"горы", "лес", "ферма", "виноградник", "каякинг"}},
+						"vibe_summary":        map[string]any{"type": "string", "description": "Краткое резюме настроения на русском.", "example": "Семейный турист, предпочитающий природный отдых с элементами приключений."},
+						"vibe_passport_title": map[string]any{"type": "string", "description": "Заголовок vibe-паспорта для экрана.", "example": "Исследователь Кубани"},
+						"vector_id":           map[string]any{"type": "string", "format": "uuid", "description": "ID вектора в Qdrant."},
+						"processing_time_ms":  map[string]any{"type": "integer", "description": "Время обработки пайплайна в миллисекундах.", "example": 2012},
+					},
+				},
+				"VibeAxes": map[string]any{
+					"type":        "object",
+					"description": "Оси vibe-профиля пользователя. Каждая ось описывает предпочтение по шкале.",
+					"properties": map[string]any{
+						"stress_level":         map[string]any{"type": "number", "description": "Уровень стресса (0.0 = спокоен, 1.0 = устал).", "example": 0.7},
+						"solitude_vs_social":   map[string]any{"type": "number", "description": "Уединение vs компания (-1.0 to 1.0).", "example": -0.5},
+						"relax_vs_adrenaline":  map[string]any{"type": "number", "description": "Релакс vs адреналин (-1.0 to 1.0).", "example": -0.3},
+						"gastro_vs_nature":     map[string]any{"type": "number", "description": "Гастрономия vs природа (-1.0 to 1.0).", "example": 0.4},
+						"culture_vs_adventure": map[string]any{"type": "number", "description": "Культура vs приключения (-1.0 to 1.0).", "example": 0.3},
 					},
 				},
 				"FinalizeResponse": map[string]any{
@@ -1071,12 +1177,65 @@ func OpenAPISpec(baseURL string) map[string]any {
 				},
 				"LocationRecommendation": map[string]any{
 					"type":        "object",
-					"description": "Рекомендация локации.",
+					"description": "Рекомендация локации для карточки на фронтенде.",
 					"properties": map[string]any{
-						"location_id": map[string]any{"type": "string", "format": "uuid", "description": "UUID локации."},
-						"score":       map[string]any{"type": "number", "description": "Cosine similarity (0-1)."},
-						"name":        map[string]any{"type": "string", "description": "Название локации."},
-						"category":    map[string]any{"type": "string", "description": "Категория локации."},
+						"location_id":       map[string]any{"type": "string", "format": "uuid", "description": "UUID локации."},
+						"score":             map[string]any{"type": "number", "description": "Cosine similarity (0-1)."},
+						"name":              map[string]any{"type": "string", "description": "Название локации."},
+						"category":          map[string]any{"type": "string", "description": "Категория."},
+						"description_short": map[string]any{"type": "string", "description": "Краткое описание для карточки."},
+						"tags":              map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Теги локации."},
+						"preview_image_url": map[string]any{"type": "string", "description": "URL hero-изображения."},
+						"splat_url":         map[string]any{"type": "string", "description": "URL 3D-сцены (.splat)."},
+						"latitude":          map[string]any{"type": "number", "description": "Широта (WGS84)."},
+						"longitude":         map[string]any{"type": "number", "description": "Долгота (WGS84)."},
+						"density_level":     map[string]any{"type": "string", "enum": []string{"red", "yellow", "green"}, "description": "Уровень туристической плотности."},
+					},
+				},
+				"MapPoint": map[string]any{
+					"type":        "object",
+					"description": "Точка для отображения на интерактивной карте.",
+					"properties": map[string]any{
+						"id":                map[string]any{"type": "string", "format": "uuid", "description": "UUID локации."},
+						"name":              map[string]any{"type": "string", "description": "Название."},
+						"category":          map[string]any{"type": "string", "description": "Категория."},
+						"latitude":          map[string]any{"type": "number", "description": "Широта."},
+						"longitude":         map[string]any{"type": "number", "description": "Долгота."},
+						"density_level":     map[string]any{"type": "string", "enum": []string{"red", "yellow", "green"}, "description": "Цвет маркера плотности."},
+						"preview_image_url": map[string]any{"type": "string", "description": "URL превью."},
+					},
+				},
+				"BuildRouteRequest": map[string]any{
+					"type":        "object",
+					"description": "Запрос на построение маршрута.",
+					"properties": map[string]any{
+						"location_ids": map[string]any{"type": "array", "items": map[string]any{"type": "string", "format": "uuid"}, "description": "UUID локаций маршрута (минимум 2).", "minItems": 2},
+						"transport":    map[string]any{"type": "string", "enum": []string{"car", "walk", "bike", "public"}, "default": "car", "description": "Тип транспорта."},
+						"optimize":     map[string]any{"type": "boolean", "default": false, "description": "Оптимизировать порядок точек."},
+					},
+					"required": []string{"location_ids"},
+				},
+				"RoutePreview": map[string]any{
+					"type":        "object",
+					"description": "Предварительный просмотр маршрута.",
+					"properties": map[string]any{
+						"points":            map[string]any{"type": "array", "items": map[string]any{"$ref": "#/components/schemas/RoutePoint"}, "description": "Точки маршрута в порядке следования."},
+						"total_distance_km": map[string]any{"type": "number", "description": "Общая дистанция маршрута в км."},
+						"total_time_min":    map[string]any{"type": "number", "description": "Общее время в пути в минутах."},
+						"transport":         map[string]any{"type": "string", "description": "Тип транспорта."},
+					},
+				},
+				"RoutePoint": map[string]any{
+					"type":        "object",
+					"description": "Точка маршрута.",
+					"properties": map[string]any{
+						"location_id":     map[string]any{"type": "string", "format": "uuid"},
+						"name":            map[string]any{"type": "string"},
+						"latitude":        map[string]any{"type": "number"},
+						"longitude":       map[string]any{"type": "number"},
+						"order":           map[string]any{"type": "integer", "description": "Порядковый номер в маршруте."},
+						"distance_km":     map[string]any{"type": "number", "description": "Расстояние до следующей точки в км."},
+						"travel_time_min": map[string]any{"type": "number", "description": "Время до следующей точки в минутах."},
 					},
 				},
 			},
