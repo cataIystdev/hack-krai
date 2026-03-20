@@ -39,8 +39,10 @@ jobs:
             if [ ! -d ".git" ]; then
               echo "Initializing git repository..."
               git init
-              git remote add origin $REPO_URL
             fi
+
+            # Убеждаемся, что remote URL обновлен свежим токеном авторизации
+            git remote set-url origin $REPO_URL || git remote add origin $REPO_URL
 
             # 3. Update from git repository
             git fetch origin
