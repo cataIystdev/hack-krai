@@ -72,4 +72,14 @@ jobs:
             # Using specific project name to avoid container collision
             docker compose --project-name deepkrai-$ENV_NAME up -d --build
 
+            # 6. Diagnostics: wait and check container health
+            echo "⏳ Waiting 15s for containers to stabilize..."
+            sleep 15
+            echo "=== CONTAINER STATUS ==="
+            docker compose --project-name deepkrai-$ENV_NAME ps
+            echo "=== API CONTAINER LOGS (last 50 lines) ==="
+            docker compose --project-name deepkrai-$ENV_NAME logs --tail=50 api
+            echo "=== HEALTH CHECK ==="
+            curl -sf http://localhost:${PORT:-8080}/api/v1/health && echo "\n✅ API is healthy!" || echo "❌ API health check failed!"
+
             echo "🎉 Deployment of $ENV_NAME complete."
