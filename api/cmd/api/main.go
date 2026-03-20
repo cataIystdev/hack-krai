@@ -148,7 +148,7 @@ func main() {
 	var vibeService *services.VibeService
 	if dbManager.Postgres != nil && dbManager.Qdrant != nil {
 		vibeRepo := database.NewVibeRepository(dbManager.Postgres, dbManager.Qdrant, logger)
-		vibeService = services.NewVibeService(voskClient, llmClient, embeddingsClient, vibeRepo, locationRepo, storageService, logger)
+		vibeService = services.NewVibeService(voskClient, llmClient, embeddingsClient, vibeRepo, locationRepo, storageService, cfg.AI.DemoLatencyMs, logger)
 	} else {
 		logger.Warn("Vibe-сервис недоступен: требуется PostgreSQL и Qdrant")
 	}

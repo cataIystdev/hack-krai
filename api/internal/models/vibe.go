@@ -75,11 +75,9 @@ func (r *SwipeRequest) Validate() error {
 	return nil
 }
 
-// VoiceProfileResponse — ответ на запрос голосового профилирования.
-type VoiceProfileResponse struct {
-	// Transcription — распознанный текст из аудио.
-	Transcription string `json:"transcription"`
-
+// VibeAxesResponse — оси vibe-профиля пользователя в JSON-ответе.
+// Вложенная структура для читаемого JSON формата на фронтенде.
+type VibeAxesResponse struct {
 	// StressLevel — уровень стресса (0.0-1.0).
 	StressLevel float64 `json:"stress_level"`
 
@@ -94,15 +92,33 @@ type VoiceProfileResponse struct {
 
 	// CultureVsAdventure — культура vs приключения (-1.0 to 1.0).
 	CultureVsAdventure float64 `json:"culture_vs_adventure"`
+}
 
-	// ExtractedTags — теги предпочтений.
+// VoiceProfileResponse — ответ на запрос голосового профилирования.
+// Screenshot-ready формат: фронтенд может рендерить vibe passport без обработки.
+type VoiceProfileResponse struct {
+	// Transcription — распознанный текст из аудио.
+	Transcription string `json:"transcription"`
+
+	// Axes — оси vibe-профиля (вложенный объект).
+	Axes VibeAxesResponse `json:"axes"`
+
+	// ExtractedTags — теги предпочтений, извлечённые из речи.
 	ExtractedTags []string `json:"extracted_tags"`
 
-	// VibeSummary — краткое резюме.
+	// VibeSummary — краткое резюме настроения на русском.
 	VibeSummary string `json:"vibe_summary"`
+
+	// VibePassportTitle — заголовок vibe-паспорта для отображения на экране.
+	// Генерируется AI или mock: "Исследователь Кубани", "Гастрономический путешественник".
+	VibePassportTitle string `json:"vibe_passport_title"`
 
 	// VectorID — ID вектора в Qdrant (user_id).
 	VectorID string `json:"vector_id"`
+
+	// ProcessingTimeMs — время обработки пайплайна в миллисекундах.
+	// Включает STT + LLM + Embeddings + Qdrant upsert.
+	ProcessingTimeMs int64 `json:"processing_time_ms"`
 }
 
 // LocationRecommendation — рекомендация локации на основе vibe-профиля.

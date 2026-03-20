@@ -13,6 +13,7 @@ import (
 	"io"
 	"math"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -35,16 +36,18 @@ type STTClient interface {
 
 // VibeService — сервис мультимодального vibe-профилирования.
 type VibeService struct {
-	stt          STTClient
-	llm          *ai.LLMClient
-	embeddings   *ai.EmbeddingsClient
-	vibeRepo     *database.VibeRepository
-	locationRepo *database.LocationRepository
-	storage      *StorageService
-	logger       *zap.Logger
+	stt           STTClient
+	llm           *ai.LLMClient
+	embeddings    *ai.EmbeddingsClient
+	vibeRepo      *database.VibeRepository
+	locationRepo  *database.LocationRepository
+	storage       *StorageService
+	demoLatencyMs int
+	logger        *zap.Logger
 }
 
 // NewVibeService создаёт сервис vibe-профилирования.
+// demoLatencyMs задаёт искусственную задержку в mock-режиме (по умолчанию 2000ms).
 func NewVibeService(
 	stt STTClient,
 	llm *ai.LLMClient,
@@ -52,33 +55,49 @@ func NewVibeService(
 	vibeRepo *database.VibeRepository,
 	locationRepo *database.LocationRepository,
 	storage *StorageService,
+	demoLatencyMs int,
 	logger *zap.Logger,
 ) *VibeService {
+	if demoLatencyMs <= 0 {
+		demoLatencyMs = 2000
+	}
+	if demoLatencyMs < 800 {
+		demoLatencyMs = 800
+	}
+	if demoLatencyMs > 5000 {
+		demoLatencyMs = 5000
+	}
 	return &VibeService{
-		stt:          stt,
-		llm:          llm,
-		embeddings:   embeddings,
-		vibeRepo:     vibeRepo,
-		locationRepo: locationRepo,
-		storage:      storage,
-		logger:       logger.Named("vibe_service"),
+		stt:           stt,
+		llm:           llm,
+		embeddings:    embeddings,
+		vibeRepo:      vibeRepo,
+		locationRepo:  locationRepo,
+		storage:       storage,
+		demoLatencyMs: demoLatencyMs,
+		logger:        logger.Named("vibe_service"),
 	}
 }
 
 // ProcessVoice выполняет полный пайплайн голосового профилирования:
 // 1. Сохранение аудио в MinIO
-// 2. Распознавание речи через Whisper STT
+// 2. Распознавание речи через STT (Vosk/Whisper)
 // 3. Извлечение осей vibe-профиля через LLM
 // 4. Генерация эмбеддинга через Embeddings API
 // 5. Upsert вектора в Qdrant (коллекция user_vibes)
 // 6. Обновление vibe_vector_id в PostgreSQL
+//
+// В mock-режиме применяется controlled latency для естественной UX-анимации.
+// Возвращает screenshot-ready VoiceProfileResponse с вложенными axes.
 func (s *VibeService) ProcessVoice(ctx context.Context, userID uuid.UUID, audioReader io.Reader, filename string, fileSize int64) (*models.VoiceProfileResponse, error) {
+	start := time.Now()
+
 	s.logger.Info("начало голосового профилирования",
 		zap.String("user_id", userID.String()),
 		zap.String("filename", filename),
 	)
 
-	// Буферизация аудиоданных для переиспользования (MinIO + Whisper).
+	// Буферизация аудиоданных для переиспользования (MinIO + STT).
 	audioData, err := io.ReadAll(audioReader)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка чтения аудиоданных: %w", err)
@@ -115,7 +134,6 @@ func (s *VibeService) ProcessVoice(ctx context.Context, userID uuid.UUID, audioR
 	}
 
 	// Шаг 4: Генерация эмбеддинга.
-	// Формируем текст для эмбеддинга на основе осей.
 	embeddingText := formatAxesForEmbedding(axes)
 	vector, err := s.embeddings.Generate(ctx, embeddingText)
 	if err != nil {
@@ -143,21 +161,73 @@ func (s *VibeService) ProcessVoice(ctx context.Context, userID uuid.UUID, audioR
 		)
 	}
 
+	// Шаг 7: Генерация заголовка vibe-паспорта.
+	passportTitle := generatePassportTitle(axes)
+
+	// Расчёт времени обработки.
+	elapsed := time.Since(start)
+
+	// Шаг 8: Controlled demo latency в mock-режиме.
+	// Если реальная обработка заняла меньше целевого demo latency,
+	// добавляем искусственную задержку для естественной анимации "ИИ думает".
+	targetDuration := time.Duration(s.demoLatencyMs) * time.Millisecond
+	if elapsed < targetDuration {
+		remainder := targetDuration - elapsed
+		s.logger.Debug("demo latency: добавлена задержка",
+			zap.Duration("remainder", remainder),
+		)
+		time.Sleep(remainder)
+		elapsed = time.Since(start)
+	}
+
 	s.logger.Info("голосовое профилирование завершено",
 		zap.String("user_id", userID.String()),
+		zap.Duration("processing_time", elapsed),
 	)
 
 	return &models.VoiceProfileResponse{
-		Transcription:      transcription,
-		StressLevel:        axes.StressLevel,
-		SolitudeVsSocial:   axes.SolitudeVsSocial,
-		RelaxVsAdrenaline:  axes.RelaxVsAdrenaline,
-		GastroVsNature:     axes.GastroVsNature,
-		CultureVsAdventure: axes.CultureVsAdventure,
-		ExtractedTags:      axes.ExtractedTags,
-		VibeSummary:        axes.VibeSummary,
-		VectorID:           userID.String(),
+		Transcription: transcription,
+		Axes: models.VibeAxesResponse{
+			StressLevel:        axes.StressLevel,
+			SolitudeVsSocial:   axes.SolitudeVsSocial,
+			RelaxVsAdrenaline:  axes.RelaxVsAdrenaline,
+			GastroVsNature:     axes.GastroVsNature,
+			CultureVsAdventure: axes.CultureVsAdventure,
+		},
+		ExtractedTags:     axes.ExtractedTags,
+		VibeSummary:       axes.VibeSummary,
+		VibePassportTitle: passportTitle,
+		VectorID:          userID.String(),
+		ProcessingTimeMs:  elapsed.Milliseconds(),
 	}, nil
+}
+
+// generatePassportTitle генерирует заголовок vibe-паспорта на основе осей профиля.
+// Анализирует доминирующую ось и формирует описательный заголовок.
+func generatePassportTitle(axes *ai.VibeAxes) string {
+	// Определение доминирующей характеристики.
+	if axes.GastroVsNature < -0.3 {
+		return "Гастрономический путешественник"
+	}
+	if axes.CultureVsAdventure > 0.3 {
+		return "Искатель приключений"
+	}
+	if axes.CultureVsAdventure < -0.3 {
+		return "Культурный исследователь"
+	}
+	if axes.RelaxVsAdrenaline < -0.3 {
+		return "Ценитель спокойствия"
+	}
+	if axes.RelaxVsAdrenaline > 0.3 {
+		return "Адреналиновый турист"
+	}
+	if axes.SolitudeVsSocial < -0.3 {
+		return "Созерцатель тишины"
+	}
+	if axes.SolitudeVsSocial > 0.3 {
+		return "Душа компании"
+	}
+	return "Исследователь Кубани"
 }
 
 // Swipe выполняет математический сдвиг вектора пользователя на основе свайпа сцены.

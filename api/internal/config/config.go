@@ -232,6 +232,11 @@ type AIConfig struct {
 
 	// VoskPort — порт Vosk-server (по умолчанию 2700).
 	VoskPort int `mapstructure:"vosk_port"`
+
+	// DemoLatencyMs — искусственная задержка в миллисекундах для mock-режима.
+	// Создаёт естественную UX-анимацию "ИИ думает" при демонстрации.
+	// По умолчанию 2000ms. Диапазон: 800-5000ms.
+	DemoLatencyMs int `mapstructure:"demo_latency_ms"`
 }
 
 // IsMockMode возвращает true, если API-ключ не задан и нужно использовать mock-клиенты.
