@@ -6,8 +6,8 @@ package handlers
 
 // OpenAPISpec возвращает полную спецификацию OpenAPI 3.1 в виде Go-структуры.
 // Структура сериализуется в JSON при обработке запроса GET /api/v1/docs/openapi.json.
-// Все описания, примеры и схемы максимально подробно документируют API.
-func OpenAPISpec() map[string]any {
+// Параметр baseURL определяет адрес сервера, отображаемый в Scalar UI.
+func OpenAPISpec(baseURL string) map[string]any {
 	return map[string]any{
 		"openapi": "3.1.0",
 		"info": map[string]any{
@@ -23,8 +23,8 @@ func OpenAPISpec() map[string]any {
 		},
 		"servers": []map[string]any{
 			{
-				"url":         "http://localhost:8080",
-				"description": "Локальный сервер разработки",
+				"url":         baseURL,
+				"description": "Текущий сервер",
 			},
 		},
 		"tags": []map[string]any{
