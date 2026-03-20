@@ -85,9 +85,25 @@ jobs:
             docker compose --project-name deepkrai-$ENV_NAME down --remove-orphans || true
             docker compose --project-name deepkrai-$ENV_NAME up -d --build
 
-            # 6. Diagnostics: wait and check container health
-            echo "⏳ Waiting 30s for containers to stabilize..."
-            sleep 30
+            # 6. Wait for slow-starting services (Neo4j needs ~80s)
+            echo "⏳ Waiting for all databases to become healthy..."
+            for i in $(seq 1 24); do
+              NEO4J_STATUS=$(docker inspect --format='{{.State.Health.Status}}' deepkrai-${ENV_NAME}-neo4j-1 2>/dev/null || echo "not_found")
+              CH_STATUS=$(docker inspect --format='{{.State.Health.Status}}' deepkrai-${ENV_NAME}-clickhouse-1 2>/dev/null || echo "not_found")
+              echo "  [… $((i*5))s] neo4j=$NEO4J_STATUS clickhouse=$CH_STATUS"
+              if [ "$NEO4J_STATUS" = "healthy" ] && [ "$CH_STATUS" = "healthy" ]; then
+                echo "✅ All databases are healthy!"
+                break
+              fi
+              sleep 5
+            done
+
+            # 7. Restart API so it reconnects to all now-healthy databases
+            echo "🔄 Restarting API to reconnect to all databases..."
+            docker compose --project-name deepkrai-$ENV_NAME restart api
+            sleep 10
+
+            # 8. Diagnostics
             echo "=== CONTAINER STATUS ==="
             docker compose --project-name deepkrai-$ENV_NAME ps
             echo "=== API CONTAINER LOGS (last 50 lines) ==="
