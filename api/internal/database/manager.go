@@ -73,10 +73,10 @@ func GetManager(logger *zap.Logger) *Manager {
 }
 
 // maxRetries — количество попыток подключения к каждой БД.
-const maxRetries = 5
+const maxRetries = 10
 
 // retryInterval — интервал между попытками подключения.
-const retryInterval = 3 * time.Second
+const retryInterval = 5 * time.Second
 
 // ConnectAll устанавливает подключения ко всем 6 базам данных параллельно.
 // Каждое подключение выполняется в отдельной горутине с retry-логикой
