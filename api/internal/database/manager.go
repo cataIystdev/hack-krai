@@ -72,10 +72,17 @@ func GetManager(logger *zap.Logger) *Manager {
 	return singleton
 }
 
+// maxRetries — количество попыток подключения к каждой БД.
+const maxRetries = 5
+
+// retryInterval — интервал между попытками подключения.
+const retryInterval = 3 * time.Second
+
 // ConnectAll устанавливает подключения ко всем 6 базам данных параллельно.
-// Каждое подключение выполняется в отдельной горутине для ускорения запуска.
+// Каждое подключение выполняется в отдельной горутине с retry-логикой
+// (до 5 попыток с интервалом 3 секунды) для ожидания медленно стартующих сервисов.
 // Подключение выполняется ровно один раз (sync.Once).
-// Возвращает ошибку, если хотя бы одно подключение не удалось.
+// Возвращает ошибку, если хотя бы одно подключение не удалось после всех попыток.
 func (m *Manager) ConnectAll(ctx context.Context, cfg *config.AppConfig) error {
 	var connectErr error
 
@@ -94,66 +101,114 @@ func (m *Manager) ConnectAll(ctx context.Context, cfg *config.AppConfig) error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			client, err := NewPostgresClient(ctx, cfg.Postgres, m.logger)
-			if err == nil {
-				m.Postgres = client
+			var lastErr error
+			for attempt := 1; attempt <= maxRetries; attempt++ {
+				client, err := NewPostgresClient(ctx, cfg.Postgres, m.logger)
+				if err == nil {
+					m.Postgres = client
+					results <- result{name: "PostgreSQL"}
+					return
+				}
+				lastErr = err
+				m.logger.Warn("retry подключения к БД", zap.String("service", "PostgreSQL"), zap.Int("attempt", attempt), zap.Int("max", maxRetries), zap.Error(err))
+				time.Sleep(retryInterval)
 			}
-			results <- result{name: "PostgreSQL", err: err}
+			results <- result{name: "PostgreSQL", err: lastErr}
 		}()
 
 		// Подключение к Redis.
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			client, err := NewRedisClient(ctx, cfg.Redis, m.logger)
-			if err == nil {
-				m.Redis = client
+			var lastErr error
+			for attempt := 1; attempt <= maxRetries; attempt++ {
+				client, err := NewRedisClient(ctx, cfg.Redis, m.logger)
+				if err == nil {
+					m.Redis = client
+					results <- result{name: "Redis"}
+					return
+				}
+				lastErr = err
+				m.logger.Warn("retry подключения к БД", zap.String("service", "Redis"), zap.Int("attempt", attempt), zap.Int("max", maxRetries), zap.Error(err))
+				time.Sleep(retryInterval)
 			}
-			results <- result{name: "Redis", err: err}
+			results <- result{name: "Redis", err: lastErr}
 		}()
 
 		// Подключение к Qdrant.
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			client, err := NewQdrantClient(ctx, cfg.Qdrant, m.logger)
-			if err == nil {
-				m.Qdrant = client
+			var lastErr error
+			for attempt := 1; attempt <= maxRetries; attempt++ {
+				client, err := NewQdrantClient(ctx, cfg.Qdrant, m.logger)
+				if err == nil {
+					m.Qdrant = client
+					results <- result{name: "Qdrant"}
+					return
+				}
+				lastErr = err
+				m.logger.Warn("retry подключения к БД", zap.String("service", "Qdrant"), zap.Int("attempt", attempt), zap.Int("max", maxRetries), zap.Error(err))
+				time.Sleep(retryInterval)
 			}
-			results <- result{name: "Qdrant", err: err}
+			results <- result{name: "Qdrant", err: lastErr}
 		}()
 
 		// Подключение к Neo4j.
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			client, err := NewNeo4jClient(ctx, cfg.Neo4j, m.logger)
-			if err == nil {
-				m.Neo4j = client
+			var lastErr error
+			for attempt := 1; attempt <= maxRetries; attempt++ {
+				client, err := NewNeo4jClient(ctx, cfg.Neo4j, m.logger)
+				if err == nil {
+					m.Neo4j = client
+					results <- result{name: "Neo4j"}
+					return
+				}
+				lastErr = err
+				m.logger.Warn("retry подключения к БД", zap.String("service", "Neo4j"), zap.Int("attempt", attempt), zap.Int("max", maxRetries), zap.Error(err))
+				time.Sleep(retryInterval)
 			}
-			results <- result{name: "Neo4j", err: err}
+			results <- result{name: "Neo4j", err: lastErr}
 		}()
 
 		// Подключение к ClickHouse.
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			client, err := NewClickHouseClient(ctx, cfg.ClickHouse, m.logger)
-			if err == nil {
-				m.ClickHouse = client
+			var lastErr error
+			for attempt := 1; attempt <= maxRetries; attempt++ {
+				client, err := NewClickHouseClient(ctx, cfg.ClickHouse, m.logger)
+				if err == nil {
+					m.ClickHouse = client
+					results <- result{name: "ClickHouse"}
+					return
+				}
+				lastErr = err
+				m.logger.Warn("retry подключения к БД", zap.String("service", "ClickHouse"), zap.Int("attempt", attempt), zap.Int("max", maxRetries), zap.Error(err))
+				time.Sleep(retryInterval)
 			}
-			results <- result{name: "ClickHouse", err: err}
+			results <- result{name: "ClickHouse", err: lastErr}
 		}()
 
 		// Подключение к MinIO.
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			client, err := NewMinIOClient(ctx, cfg.MinIO, m.logger)
-			if err == nil {
-				m.MinIO = client
+			var lastErr error
+			for attempt := 1; attempt <= maxRetries; attempt++ {
+				client, err := NewMinIOClient(ctx, cfg.MinIO, m.logger)
+				if err == nil {
+					m.MinIO = client
+					results <- result{name: "MinIO"}
+					return
+				}
+				lastErr = err
+				m.logger.Warn("retry подключения к БД", zap.String("service", "MinIO"), zap.Int("attempt", attempt), zap.Int("max", maxRetries), zap.Error(err))
+				time.Sleep(retryInterval)
 			}
-			results <- result{name: "MinIO", err: err}
+			results <- result{name: "MinIO", err: lastErr}
 		}()
 
 		// Ожидание завершения всех подключений.
@@ -165,7 +220,7 @@ func (m *Manager) ConnectAll(ctx context.Context, cfg *config.AppConfig) error {
 		for r := range results {
 			if r.err != nil {
 				errors = append(errors, fmt.Sprintf("%s: %v", r.name, r.err))
-				m.logger.Error("ошибка подключения к БД",
+				m.logger.Error("ошибка подключения к БД после всех попыток",
 					zap.String("service", r.name),
 					zap.Error(r.err),
 				)
