@@ -1,0 +1,297 @@
+// Файл vibe.go реализует бизнес-логику мультимодального профилирования туриста.
+// Содержит три основных метода:
+//   - ProcessVoice: аудио -> Whisper STT -> LLM оси -> Embeddings -> Qdrant upsert
+//   - Swipe: математический сдвиг вектора к/от сцены
+//   - Finalize: Top-10 ближайших локаций из Qdrant
+package services
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"math"
+	"strings"
+
+	"github.com/google/uuid"
+	"go.uber.org/zap"
+
+	"deep-krai-api/internal/ai"
+	"deep-krai-api/internal/database"
+	"deep-krai-api/internal/models"
+)
+
+// swipeAlpha — коэффициент сохранения исходного вектора при свайпе.
+// 0.85 означает 85% старого вектора + 15% вектора сцены (right) или
+// 85% старого вектора - 15% вектора сцены (left).
+const swipeAlpha = 0.85
+
+// STTClient — интерфейс для сервиса распознавания речи.
+// Реализуется VoskClient (локальный) и WhisperClient (API).
+type STTClient interface {
+	Transcribe(ctx context.Context, audioReader io.Reader, filename string, fileSize int64) (string, error)
+}
+
+// VibeService — сервис мультимодального vibe-профилирования.
+type VibeService struct {
+	stt        STTClient
+	llm        *ai.LLMClient
+	embeddings *ai.EmbeddingsClient
+	vibeRepo   *database.VibeRepository
+	storage    *StorageService
+	logger     *zap.Logger
+}
+
+// NewVibeService создаёт сервис vibe-профилирования.
+func NewVibeService(
+	stt STTClient,
+	llm *ai.LLMClient,
+	embeddings *ai.EmbeddingsClient,
+	vibeRepo *database.VibeRepository,
+	storage *StorageService,
+	logger *zap.Logger,
+) *VibeService {
+	return &VibeService{
+		stt:        stt,
+		llm:        llm,
+		embeddings: embeddings,
+		vibeRepo:   vibeRepo,
+		storage:    storage,
+		logger:     logger.Named("vibe_service"),
+	}
+}
+
+// ProcessVoice выполняет полный пайплайн голосового профилирования:
+// 1. Сохранение аудио в MinIO
+// 2. Распознавание речи через Whisper STT
+// 3. Извлечение осей vibe-профиля через LLM
+// 4. Генерация эмбеддинга через Embeddings API
+// 5. Upsert вектора в Qdrant (коллекция user_vibes)
+// 6. Обновление vibe_vector_id в PostgreSQL
+func (s *VibeService) ProcessVoice(ctx context.Context, userID uuid.UUID, audioReader io.Reader, filename string, fileSize int64) (*models.VoiceProfileResponse, error) {
+	s.logger.Info("начало голосового профилирования",
+		zap.String("user_id", userID.String()),
+		zap.String("filename", filename),
+	)
+
+	// Буферизация аудиоданных для переиспользования (MinIO + Whisper).
+	audioData, err := io.ReadAll(audioReader)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка чтения аудиоданных: %w", err)
+	}
+	actualSize := int64(len(audioData))
+
+	// Шаг 1: Сохранение аудио в MinIO.
+	objectName := GenerateObjectName(filename)
+	if s.storage != nil {
+		_, err := s.storage.Upload(ctx, objectName, bytes.NewReader(audioData), actualSize, "audio/mpeg")
+		if err != nil {
+			s.logger.Warn("не удалось загрузить аудио в MinIO", zap.Error(err))
+		}
+	}
+
+	// Шаг 2: Распознавание речи через STT (Vosk или Whisper).
+	transcription, err := s.stt.Transcribe(ctx, bytes.NewReader(audioData), filename, actualSize)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка распознавания речи: %w", err)
+	}
+
+	s.logger.Info("транскрипция получена",
+		zap.Int("text_length", len(transcription)),
+	)
+
+	if len(strings.TrimSpace(transcription)) == 0 {
+		return nil, fmt.Errorf("ошибка: аудио не распознано или содержит тишину")
+	}
+
+	// Шаг 3: Извлечение осей vibe-профиля через LLM.
+	axes, err := s.llm.ExtractVibeAxes(ctx, transcription)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка извлечения осей: %w", err)
+	}
+
+	// Шаг 4: Генерация эмбеддинга.
+	// Формируем текст для эмбеддинга на основе осей.
+	embeddingText := formatAxesForEmbedding(axes)
+	vector, err := s.embeddings.Generate(ctx, embeddingText)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка генерации эмбеддинга: %w", err)
+	}
+
+	// Шаг 5: Upsert вектора в Qdrant.
+	payload := map[string]any{
+		"stress_level":         axes.StressLevel,
+		"solitude_vs_social":   axes.SolitudeVsSocial,
+		"relax_vs_adrenaline":  axes.RelaxVsAdrenaline,
+		"gastro_vs_nature":     axes.GastroVsNature,
+		"culture_vs_adventure": axes.CultureVsAdventure,
+		"vibe_summary":         axes.VibeSummary,
+	}
+
+	if err := s.vibeRepo.UpsertVibeVector(ctx, database.CollectionUserVibes, userID, vector, payload); err != nil {
+		return nil, fmt.Errorf("ошибка upsert вектора: %w", err)
+	}
+
+	// Шаг 6: Обновление vibe_vector_id в PostgreSQL.
+	if err := s.vibeRepo.UpdateVibeVectorID(ctx, userID, userID); err != nil {
+		s.logger.Warn("не удалось обновить vibe_vector_id в PostgreSQL",
+			zap.Error(err),
+		)
+	}
+
+	s.logger.Info("голосовое профилирование завершено",
+		zap.String("user_id", userID.String()),
+	)
+
+	return &models.VoiceProfileResponse{
+		Transcription:      transcription,
+		StressLevel:        axes.StressLevel,
+		SolitudeVsSocial:   axes.SolitudeVsSocial,
+		RelaxVsAdrenaline:  axes.RelaxVsAdrenaline,
+		GastroVsNature:     axes.GastroVsNature,
+		CultureVsAdventure: axes.CultureVsAdventure,
+		ExtractedTags:      axes.ExtractedTags,
+		VibeSummary:        axes.VibeSummary,
+		VectorID:           userID.String(),
+	}, nil
+}
+
+// Swipe выполняет математический сдвиг вектора пользователя на основе свайпа сцены.
+// При свайпе вправо (right): вектор сдвигается к вектору сцены.
+// При свайпе влево (left): вектор сдвигается от вектора сцены.
+// Формула: new = normalize(alpha * user_vec +/- (1-alpha) * scene_vec)
+func (s *VibeService) Swipe(ctx context.Context, userID uuid.UUID, sceneID string, direction models.SwipeDirection) error {
+	s.logger.Info("обработка свайпа",
+		zap.String("user_id", userID.String()),
+		zap.String("scene_id", sceneID),
+		zap.String("direction", string(direction)),
+	)
+
+	// Получение вектора пользователя из Qdrant.
+	userVector, err := s.vibeRepo.GetVibeVector(ctx, database.CollectionUserVibes, userID)
+	if err != nil {
+		return fmt.Errorf("ошибка получения вектора пользователя: %w", err)
+	}
+
+	// Получение вектора сцены из Qdrant.
+	sceneUUID, err := uuid.Parse(sceneID)
+	if err != nil {
+		return fmt.Errorf("некорректный UUID сцены: %w", err)
+	}
+
+	sceneVector, err := s.vibeRepo.GetVibeVector(ctx, database.CollectionUserVibes, sceneUUID)
+	if err != nil {
+		// Если вектора сцены нет в Qdrant — пропускаем свайп.
+		s.logger.Warn("вектор сцены не найден в Qdrant, свайп пропущен",
+			zap.String("scene_id", sceneID),
+		)
+		return nil
+	}
+
+	// Математический сдвиг вектора.
+	newVector := shiftVector(userVector, sceneVector, direction)
+
+	// Upsert обновлённого вектора.
+	if err := s.vibeRepo.UpsertVibeVector(ctx, database.CollectionUserVibes, userID, newVector, nil); err != nil {
+		return fmt.Errorf("ошибка обновления вектора после свайпа: %w", err)
+	}
+
+	s.logger.Info("свайп обработан",
+		zap.String("user_id", userID.String()),
+		zap.String("direction", string(direction)),
+	)
+	return nil
+}
+
+// Finalize выполняет финальный поиск Top-10 ближайших локаций на основе vibe-вектора.
+// Берёт вектор пользователя из Qdrant (user_vibes) и ищет ближайшие в location_vibes.
+func (s *VibeService) Finalize(ctx context.Context, userID uuid.UUID) (*models.FinalizeResponse, error) {
+	s.logger.Info("финализация профиля",
+		zap.String("user_id", userID.String()),
+	)
+
+	// Получение вектора пользователя.
+	userVector, err := s.vibeRepo.GetVibeVector(ctx, database.CollectionUserVibes, userID)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка получения вектора пользователя: %w", err)
+	}
+
+	// Поиск Top-10 ближайших локаций.
+	recommendations, err := s.vibeRepo.SearchNearest(ctx, database.CollectionLocationVibes, userVector, 10)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка поиска рекомендаций: %w", err)
+	}
+
+	return &models.FinalizeResponse{
+		Recommendations: recommendations,
+		TotalFound:      len(recommendations),
+	}, nil
+}
+
+// GetScenes возвращает все сцены свайпа для анкеты.
+func (s *VibeService) GetScenes(ctx context.Context) ([]models.SwipeScene, error) {
+	return s.vibeRepo.GetAllScenes(ctx)
+}
+
+// shiftVector выполняет математический сдвиг вектора пользователя.
+// Формула для right: new = normalize(alpha * user + (1-alpha) * scene)
+// Формула для left:  new = normalize(alpha * user - (1-alpha) * scene)
+func shiftVector(userVec, sceneVec []float32, direction models.SwipeDirection) []float32 {
+	size := len(userVec)
+	if len(sceneVec) < size {
+		size = len(sceneVec)
+	}
+
+	result := make([]float32, size)
+	beta := 1.0 - swipeAlpha
+
+	for i := 0; i < size; i++ {
+		userVal := float64(userVec[i]) * swipeAlpha
+		sceneVal := float64(sceneVec[i]) * beta
+
+		if direction == models.SwipeRight {
+			result[i] = float32(userVal + sceneVal)
+		} else {
+			result[i] = float32(userVal - sceneVal)
+		}
+	}
+
+	// Нормализация результата до единичной длины.
+	return normalizeVector(result)
+}
+
+// normalizeVector нормализует вектор до единичной длины (L2 norm).
+func normalizeVector(vec []float32) []float32 {
+	var norm float64
+	for _, v := range vec {
+		norm += float64(v) * float64(v)
+	}
+	norm = math.Sqrt(norm)
+
+	if norm == 0 {
+		return vec
+	}
+
+	result := make([]float32, len(vec))
+	for i, v := range vec {
+		result[i] = float32(float64(v) / norm)
+	}
+	return result
+}
+
+// formatAxesForEmbedding форматирует оси vibe-профиля в текст для эмбеддинга.
+// Текст содержит числовые значения осей и теги для генерации семантического вектора.
+func formatAxesForEmbedding(axes *ai.VibeAxes) string {
+	tagsJSON, _ := json.Marshal(axes.ExtractedTags)
+	return fmt.Sprintf(
+		"Турист: стресс=%.2f уединение=%.2f релакс=%.2f гастро=%.2f культура=%.2f теги=%s резюме: %s",
+		axes.StressLevel,
+		axes.SolitudeVsSocial,
+		axes.RelaxVsAdrenaline,
+		axes.GastroVsNature,
+		axes.CultureVsAdventure,
+		string(tagsJSON),
+		axes.VibeSummary,
+	)
+}

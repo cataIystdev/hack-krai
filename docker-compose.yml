@@ -1,0 +1,232 @@
+# ==============================================================================
+# Deep Krai — Docker Compose
+# ==============================================================================
+# Инфраструктура из 6 сервисов баз данных для платформы Deep Krai.
+# Все порты, пароли и параметры берутся из файла .env.
+#
+# Запуск:   docker compose up -d
+# Остановка: docker compose down
+# С удалением данных: docker compose down -v
+# ==============================================================================
+
+services:
+  # --- PostgreSQL 16 + PostGIS ------------------------------------------------
+  # Основная реляционная БД для пользователей, локаций, бронирований.
+  # Образ postgis/postgis включает расширение PostGIS для пространственных
+  # запросов (ST_DWithin, ST_Contains и другие).
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: deepkrai-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - deepkrai-network
+
+  # --- Redis 7 ----------------------------------------------------------------
+  # Кэширование, PubSub для WebSocket-уведомлений, очереди задач (Streams).
+  # Используется alpine-образ для минимального размера.
+  redis:
+    image: redis:7-alpine
+    container_name: deepkrai-redis
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes
+    ports:
+      - "${REDIS_PORT}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - deepkrai-network
+
+  # --- Qdrant ------------------------------------------------------------------
+  # Векторная БД для хранения vibe-эмбеддингов пользователей и локаций.
+  # Поддерживает cosine similarity, фильтрацию по метаданным.
+  # HTTP API на порту 6333, gRPC на порту 6334.
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: deepkrai-qdrant
+    restart: unless-stopped
+    ports:
+      - "${QDRANT_HTTP_PORT}:6333"
+      - "${QDRANT_GRPC_PORT}:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:6333/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - deepkrai-network
+
+  # --- Neo4j 5 -----------------------------------------------------------------
+  # Графовая БД для хранения графа маршрутов, связей пользователь-локация,
+  # системы кармы (Hidden Gems). Поддерживает Dijkstra/A* из коробки.
+  # Bolt-протокол на порту 7687, веб-интерфейс на 7474.
+  neo4j:
+    image: neo4j:5
+    container_name: deepkrai-neo4j
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER}/${NEO4J_PASSWORD}
+      NEO4J_PLUGINS: '["apoc", "graph-data-science"]'
+    ports:
+      - "${NEO4J_HTTP_PORT}:7474"
+      - "${NEO4J_BOLT_PORT}:7687"
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "cypher-shell -u ${NEO4J_USER} -p ${NEO4J_PASSWORD} 'RETURN 1' || exit 1",
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - deepkrai-network
+
+  # --- ClickHouse --------------------------------------------------------------
+  # Колоночная аналитическая БД для телеметрии, тепловых карт,
+  # агрегатов B2G-дашборда. Обрабатывает 100M+ строк/с на агрегации.
+  # Нативный протокол на порту 9000, HTTP API на 8123.
+  clickhouse:
+    image: clickhouse/clickhouse-server:24
+    container_name: deepkrai-clickhouse
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ports:
+      - "${CLICKHOUSE_PORT}:9000"
+      - "${CLICKHOUSE_HTTP_PORT}:8123"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - clickhouse_logs:/var/log/clickhouse-server
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "clickhouse-client --user ${CLICKHOUSE_USER} --password ${CLICKHOUSE_PASSWORD} --query 'SELECT 1' || exit 1",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - deepkrai-network
+
+  # --- MinIO (S3-совместимое объектное хранилище) ------------------------------
+  # Хранение .splat файлов (3D-сцены), аудиофайлов, видео от фермеров,
+  # изображений. Полная совместимость с S3 API.
+  # API на порту 9000, консоль управления на 9001.
+  minio:
+    image: minio/minio:latest
+    container_name: deepkrai-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "${MINIO_API_PORT}:9000"
+      - "${MINIO_CONSOLE_PORT}:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "mc ready local || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - deepkrai-network
+
+  # --- Vosk STT (Speech-to-Text) -----------------------------------------------
+  # Локальный бесплатный сервис распознавания речи. Русская модель (kaldi-ru).
+  # WebSocket API на порту 2700. Принимает PCM 16kHz mono.
+  # Используется вместо Whisper API для конвертации голоса в текст.
+  vosk:
+    image: alphacep/kaldi-ru:latest
+    container_name: deepkrai-vosk
+    restart: unless-stopped
+    ports:
+      - "${VOSK_PORT:-2700}:2700"
+    healthcheck:
+      test: ["CMD-SHELL", "exit 0"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - deepkrai-network
+
+  # --- Local Embeddings Server (miniLM) ----------------------------------------
+  # Локальный легковесный генератор векторов для Qdrant (совместим с OpenAI API)
+  embeddings-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.embeddings
+    container_name: deepkrai-embeddings
+    ports:
+      - "${EMBEDDINGS_PORT:-7997}:7997"
+    networks:
+      - deepkrai-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7997/docs"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+# --- Именованные тома --------------------------------------------------------
+# Данные каждого сервиса хранятся в отдельном именованном томе Docker.
+# Для полной очистки: docker compose down -v
+volumes:
+  postgres_data:
+    name: deepkrai-postgres-data
+  redis_data:
+    name: deepkrai-redis-data
+  qdrant_data:
+    name: deepkrai-qdrant-data
+  neo4j_data:
+    name: deepkrai-neo4j-data
+  neo4j_logs:
+    name: deepkrai-neo4j-logs
+  clickhouse_data:
+    name: deepkrai-clickhouse-data
+  clickhouse_logs:
+    name: deepkrai-clickhouse-logs
+  minio_data:
+    name: deepkrai-minio-data
+
+# --- Сеть ---------------------------------------------------------------------
+# Общая bridge-сеть для взаимодействия сервисов между собой.
+networks:
+  deepkrai-network:
+    name: deepkrai-network
+    driver: bridge

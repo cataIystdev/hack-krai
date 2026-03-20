@@ -1,0 +1,18 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Устанавливаем зависимости с зеркала Tsinghua для обхода таймаутов
+RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple --no-cache-dir fastapi uvicorn sentence-transformers pydantic
+
+# Копируем скрипт сервера
+COPY embeddings_server.py .
+
+# Предзагружаем модель, чтобы контейнер стартовал быстрее
+ENV EMBEDDINGS_MODEL="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+ENV HF_ENDPOINT="https://hf-mirror.com"
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('${EMBEDDINGS_MODEL}')"
+
+EXPOSE 7997
+
+CMD ["python", "embeddings_server.py"]
