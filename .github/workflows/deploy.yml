@@ -68,8 +68,8 @@ jobs:
               echo "⚠️ WARNING: Environment file $CONFIG_DIR/.env.$ENV_NAME not found."
             fi
 
-            # 5. Restart Infrastructure services + API
-            # Using specific project name to avoid container collision
+            # 5. Stop old containers to free ports, then start fresh
+            docker compose --project-name deepkrai-$ENV_NAME down --remove-orphans || true
             docker compose --project-name deepkrai-$ENV_NAME up -d --build
 
             # 6. Diagnostics: wait and check container health
