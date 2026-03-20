@@ -21,9 +21,9 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           password: ${{ secrets.SERVER_PASSWORD }}
-          envs: BRANCH_NAME, REPO_URL
           command_timeout: 45m
           script: |
+            set -xe # Включаем подробное логирование каждой команды и прерывание при ошибках
             export ENV_NAME=$BRANCH_NAME
             export DEPLOY_DIR=/opt/deepkrai/$ENV_NAME
             export CONFIG_DIR=/opt/deepkrai/configs
@@ -34,14 +34,16 @@ jobs:
             mkdir -p $DEPLOY_DIR
             cd $DEPLOY_DIR
 
-            # 2. Clone repository if not existing
+            # 2. Clone repository if not existing using init (works even if dir is not empty)
             if [ ! -d ".git" ]; then
-              git clone $REPO_URL .
+              echo "Initializing git repository..."
+              git init
+              git remote add origin $REPO_URL
             fi
 
             # 3. Update from git repository
             git fetch origin
-            git checkout $ENV_NAME
+            git checkout -f $ENV_NAME || git checkout -b $ENV_NAME origin/$ENV_NAME
             git reset --hard origin/$ENV_NAME
 
             # 4. Apply environment configuration
@@ -60,6 +62,7 @@ jobs:
             echo "🔨 Building Go API..."
             cd api
             # Make sure go is available on the target environment or use a specific path
+            export PATH=$PATH:/usr/local/go/bin
             export CGO_ENABLED=0 GOOS=linux GOARCH=amd64
             # Attempt to build, if go command not found, warn
             if command -v go &> /dev/null; then
