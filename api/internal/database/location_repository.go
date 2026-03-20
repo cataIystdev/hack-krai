@@ -30,7 +30,7 @@ var ErrLocationForbidden = errors.New("нет прав на изменение �
 const locationColumns = `
 	id, owner_id, slug, name, description_short, description_full,
 	category, tags, price_per_night, capacity, access_level, density_level,
-	child_friendly, splat_url, vibe_vector_id, address, is_published,
+	child_friendly, splat_url, preview_image_url, vibe_vector_id, address, is_published,
 	ST_X(geo) AS longitude, ST_Y(geo) AS latitude,
 	created_at, updated_at
 `
@@ -58,7 +58,7 @@ func scanLocation(row pgx.Row) (*models.Location, error) {
 		&loc.DescriptionShort, &loc.DescriptionFull,
 		&loc.Category, &loc.Tags, &loc.PricePerNight, &loc.Capacity,
 		&loc.AccessLevel, &loc.DensityLevel, &loc.ChildFriendly,
-		&loc.SplatURL, &loc.VibeVectorID, &loc.Address, &loc.IsPublished,
+		&loc.SplatURL, &loc.PreviewImageURL, &loc.VibeVectorID, &loc.Address, &loc.IsPublished,
 		&loc.Longitude, &loc.Latitude,
 		&loc.CreatedAt, &loc.UpdatedAt,
 	)
@@ -385,7 +385,7 @@ func (r *LocationRepository) Search(ctx context.Context, filter *models.Location
 			&loc.DescriptionShort, &loc.DescriptionFull,
 			&loc.Category, &loc.Tags, &loc.PricePerNight, &loc.Capacity,
 			&loc.AccessLevel, &loc.DensityLevel, &loc.ChildFriendly,
-			&loc.SplatURL, &loc.VibeVectorID, &loc.Address, &loc.IsPublished,
+			&loc.SplatURL, &loc.PreviewImageURL, &loc.VibeVectorID, &loc.Address, &loc.IsPublished,
 			&loc.Longitude, &loc.Latitude,
 			&loc.CreatedAt, &loc.UpdatedAt,
 		)
@@ -401,4 +401,133 @@ func (r *LocationRepository) Search(ctx context.Context, filter *models.Location
 	}
 
 	return locations, total, nil
+}
+
+// SearchForMap выполняет оптимизированный поиск локаций для карты.
+// Возвращает только поля, необходимые для отображения маркеров (без полных описаний).
+// Поддерживает bbox-фильтрацию, фильтры по категории и плотности.
+func (r *LocationRepository) SearchForMap(ctx context.Context, filter *models.MapLocationFilter) ([]models.MapPoint, error) {
+	filter.NormalizeLimit()
+
+	whereClauses := []string{"is_published = true"}
+	args := []any{}
+	argIdx := 1
+
+	// Пространственный поиск: bbox.
+	if filter.HasBBox() {
+		whereClauses = append(whereClauses, fmt.Sprintf(
+			"ST_Within(geo, ST_MakeEnvelope($%d, $%d, $%d, $%d, 4326))",
+			argIdx, argIdx+1, argIdx+2, argIdx+3,
+		))
+		args = append(args, *filter.MinLon, *filter.MinLat, *filter.MaxLon, *filter.MaxLat)
+		argIdx += 4
+	}
+
+	// Фильтр по категории.
+	if filter.Category != nil && *filter.Category != "" {
+		whereClauses = append(whereClauses, fmt.Sprintf("category = $%d", argIdx))
+		args = append(args, *filter.Category)
+		argIdx++
+	}
+
+	// Фильтр по плотности.
+	if filter.DensityLevel != nil && *filter.DensityLevel != "" {
+		whereClauses = append(whereClauses, fmt.Sprintf("density_level = $%d", argIdx))
+		args = append(args, *filter.DensityLevel)
+		argIdx++
+	}
+
+	whereSQL := strings.Join(whereClauses, " AND ")
+
+	// Оптимизированный SELECT: только поля для маркеров карты.
+	args = append(args, filter.Limit)
+	query := fmt.Sprintf(`
+		SELECT id, name, ST_Y(geo) AS latitude, ST_X(geo) AS longitude,
+			category, density_level, preview_image_url
+		FROM locations
+		WHERE %s
+		ORDER BY created_at DESC
+		LIMIT $%d
+	`, whereSQL, argIdx)
+
+	rows, err := r.pg.Pool.Query(ctx, query, args...)
+	if err != nil {
+		r.logger.Error("ошибка поиска локаций для карты", zap.Error(err))
+		return nil, fmt.Errorf("ошибка поиска локаций для карты: %w", err)
+	}
+	defer rows.Close()
+
+	var points []models.MapPoint
+	for rows.Next() {
+		var p models.MapPoint
+		err := rows.Scan(
+			&p.ID, &p.Name, &p.Latitude, &p.Longitude,
+			&p.Category, &p.DensityLevel, &p.PreviewImageURL,
+		)
+		if err != nil {
+			r.logger.Error("ошибка сканирования точки карты", zap.Error(err))
+			return nil, fmt.Errorf("ошибка сканирования: %w", err)
+		}
+		points = append(points, p)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ошибка итерации: %w", err)
+	}
+
+	return points, nil
+}
+
+// FindByIDs находит несколько локаций по массиву UUID.
+// Используется для обогащения рекомендаций и построения маршрутов.
+// Возвращает локации в произвольном порядке.
+func (r *LocationRepository) FindByIDs(ctx context.Context, ids []string) ([]models.Location, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	// Построение плейсхолдеров $1, $2, $3...
+	placeholders := make([]string, len(ids))
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		args[i] = id
+	}
+
+	query := fmt.Sprintf(
+		`SELECT %s FROM locations WHERE id IN (%s)`,
+		locationColumns, strings.Join(placeholders, ", "),
+	)
+
+	rows, err := r.pg.Pool.Query(ctx, query, args...)
+	if err != nil {
+		r.logger.Error("ошибка поиска локаций по IDs", zap.Error(err))
+		return nil, fmt.Errorf("ошибка поиска локаций по IDs: %w", err)
+	}
+	defer rows.Close()
+
+	var locations []models.Location
+	for rows.Next() {
+		var loc models.Location
+		err := rows.Scan(
+			&loc.ID, &loc.OwnerID, &loc.Slug, &loc.Name,
+			&loc.DescriptionShort, &loc.DescriptionFull,
+			&loc.Category, &loc.Tags, &loc.PricePerNight, &loc.Capacity,
+			&loc.AccessLevel, &loc.DensityLevel, &loc.ChildFriendly,
+			&loc.SplatURL, &loc.PreviewImageURL, &loc.VibeVectorID, &loc.Address, &loc.IsPublished,
+			&loc.Longitude, &loc.Latitude,
+			&loc.CreatedAt, &loc.UpdatedAt,
+		)
+		if err != nil {
+			r.logger.Error("ошибка сканирования локации", zap.Error(err))
+			return nil, fmt.Errorf("ошибка сканирования: %w", err)
+		}
+		locations = append(locations, loc)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ошибка итерации: %w", err)
+	}
+
+	return locations, nil
 }

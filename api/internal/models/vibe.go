@@ -105,19 +105,41 @@ type VoiceProfileResponse struct {
 	VectorID string `json:"vector_id"`
 }
 
-// LocationRecommendation — рекомендация локации из Qdrant поиска.
+// LocationRecommendation — рекомендация локации на основе vibe-профиля.
+// Содержит все поля, необходимые фронтенду для рендеринга карточки рекомендации.
 type LocationRecommendation struct {
 	// LocationID — UUID локации.
 	LocationID string `json:"location_id"`
 
-	// Score — оценка сходства (cosine similarity).
+	// Score — оценка сходства (cosine similarity, 0.0-1.0).
 	Score float32 `json:"score"`
 
-	// Name — название локации (из payload).
-	Name string `json:"name,omitempty"`
+	// Name — название локации.
+	Name string `json:"name"`
 
-	// Category — категория локации (из payload).
-	Category string `json:"category,omitempty"`
+	// Category — категория локации (winery, farm, trail и др.).
+	Category string `json:"category"`
+
+	// DescriptionShort — краткое описание для карточки.
+	DescriptionShort string `json:"description_short"`
+
+	// Tags — теги локации для отображения.
+	Tags []string `json:"tags"`
+
+	// PreviewImageURL — URL hero-изображения локации.
+	PreviewImageURL string `json:"preview_image_url"`
+
+	// SplatURL — URL 3D-сцены (.splat) для immersive preview.
+	SplatURL string `json:"splat_url,omitempty"`
+
+	// Latitude — широта для отображения на карте.
+	Latitude float64 `json:"latitude"`
+
+	// Longitude — долгота для отображения на карте.
+	Longitude float64 `json:"longitude"`
+
+	// DensityLevel — уровень туристической плотности (red/yellow/green).
+	DensityLevel string `json:"density_level"`
 }
 
 // FinalizeResponse — ответ на запрос финализации профиля.

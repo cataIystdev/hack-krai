@@ -26,6 +26,8 @@ func SetupRoutes(
 	locationService *services.LocationService,
 	tripService *services.TripService,
 	vibeService *services.VibeService,
+	mapService *services.MapService,
+	routeService *services.RouteService,
 	logger *zap.Logger,
 ) {
 	// Корневой маршрут — базовая информация о сервере.
@@ -68,6 +70,12 @@ func SetupRoutes(
 	v1.Get("/locations", locationHandler.List)
 	v1.Get("/locations/:id", locationHandler.GetByID)
 
+	// Карта — публичный эндпоинт (точки для маркеров).
+	if mapService != nil {
+		mapHandler := NewMapHandler(mapService, logger)
+		v1.Get("/map/locations", mapHandler.GetMapLocations)
+	}
+
 	// Поездки — публичный эндпоинт (присоединение по invite-ссылке без авторизации).
 	tripHandler := NewTripHandler(tripService, logger)
 	v1.Post("/trips/:id/join", tripHandler.Join)
@@ -103,4 +111,11 @@ func SetupRoutes(
 	tripsProtected.Get("/:id", tripHandler.GetByID)
 	tripsProtected.Post("/:id/invite", tripHandler.GenerateInvite)
 	tripsProtected.Get("/:id/members", tripHandler.ListMembers)
+
+	// Маршруты — защищённый эндпоинт (построение маршрута).
+	if routeService != nil {
+		routeHandler := NewRouteHandler(routeService, logger)
+		routeGroup := v1.Group("/route", jwtMiddleware)
+		routeGroup.Post("/build", routeHandler.BuildRoute)
+	}
 }

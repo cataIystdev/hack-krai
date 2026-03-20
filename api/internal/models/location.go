@@ -87,6 +87,9 @@ type Location struct {
 	// SplatURL — URL на 3D-сцену (.splat) в MinIO.
 	SplatURL *string `json:"splat_url,omitempty" db:"splat_url"`
 
+	// PreviewImageURL — URL hero-изображения локации для карточек и карты.
+	PreviewImageURL string `json:"preview_image_url" db:"preview_image_url"`
+
 	// VibeVectorID — ID вектора vibe-профиля в Qdrant.
 	VibeVectorID *uuid.UUID `json:"vibe_vector_id,omitempty" db:"vibe_vector_id"`
 

@@ -8,6 +8,9 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"sort"
+	"strings"
 	"syscall"
 	"time"
 
@@ -55,6 +58,11 @@ func main() {
 		)
 	}
 
+	// --- 3.5 Автоматическое применение SQL-миграций ---
+	if dbManager.Postgres != nil {
+		runMigrations(ctx, dbManager.Postgres, logger)
+	}
+
 	// --- 4. Инициализация сервисов ---
 
 	// Сервис хранилища (MinIO).
@@ -84,9 +92,22 @@ func main() {
 
 	// Репозиторий и сервис локаций (PostGIS).
 	var locationService *services.LocationService
+	var locationRepo *database.LocationRepository
 	if dbManager.Postgres != nil {
-		locationRepo := database.NewLocationRepository(dbManager.Postgres, logger)
+		locationRepo = database.NewLocationRepository(dbManager.Postgres, logger)
 		locationService = services.NewLocationService(locationRepo, logger)
+	}
+
+	// Сервис карты (MapService).
+	var mapService *services.MapService
+	if locationRepo != nil {
+		mapService = services.NewMapService(locationRepo, logger)
+	}
+
+	// Сервис маршрутов (RouteService).
+	var routeService *services.RouteService
+	if locationRepo != nil {
+		routeService = services.NewRouteService(locationRepo, logger)
 	}
 
 	// Репозиторий и сервис поездок.
@@ -127,7 +148,7 @@ func main() {
 	var vibeService *services.VibeService
 	if dbManager.Postgres != nil && dbManager.Qdrant != nil {
 		vibeRepo := database.NewVibeRepository(dbManager.Postgres, dbManager.Qdrant, logger)
-		vibeService = services.NewVibeService(voskClient, llmClient, embeddingsClient, vibeRepo, storageService, logger)
+		vibeService = services.NewVibeService(voskClient, llmClient, embeddingsClient, vibeRepo, locationRepo, storageService, logger)
 	} else {
 		logger.Warn("Vibe-сервис недоступен: требуется PostgreSQL и Qdrant")
 	}
@@ -162,7 +183,7 @@ func main() {
 	app.Use(middleware.NewCORS())
 
 	// --- 7. Регистрация маршрутов ---
-	handlers.SetupRoutes(app, dbManager, storageService, authService, jwtService, userRepo, locationService, tripService, vibeService, logger)
+	handlers.SetupRoutes(app, dbManager, storageService, authService, jwtService, userRepo, locationService, tripService, vibeService, mapService, routeService, logger)
 
 	// --- 8. Graceful Shutdown ---
 	// Создание канала для перехвата сигналов завершения (SIGINT, SIGTERM).
@@ -198,4 +219,75 @@ func main() {
 	dbManager.Close(shutdownCtx)
 
 	logger.Info("приложение корректно остановлено")
+}
+
+// runMigrations применяет все SQL-миграции из директории migrations/.
+// Миграции применяются идемпотентно: каждая миграция содержит IF NOT EXISTS /
+// ON CONFLICT, поэтому повторное применение безопасно.
+func runMigrations(ctx context.Context, pg *database.PostgresClient, logger *zap.Logger) {
+	// Поиск директории миграций относительно рабочей директории.
+	migrationDirs := []string{"migrations", "../migrations", "api/migrations"}
+	var migrationsDir string
+
+	for _, dir := range migrationDirs {
+		if _, err := os.Stat(dir); err == nil {
+			migrationsDir = dir
+			break
+		}
+	}
+
+	if migrationsDir == "" {
+		logger.Warn("директория миграций не найдена, пропускаем")
+		return
+	}
+
+	// Чтение файлов миграций в алфавитном порядке.
+	entries, err := os.ReadDir(migrationsDir)
+	if err != nil {
+		logger.Warn("ошибка чтения директории миграций", zap.Error(err))
+		return
+	}
+
+	var sqlFiles []string
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".sql") {
+			sqlFiles = append(sqlFiles, entry.Name())
+		}
+	}
+	sort.Strings(sqlFiles)
+
+	if len(sqlFiles) == 0 {
+		logger.Info("миграции не найдены")
+		return
+	}
+
+	logger.Info("применение миграций",
+		zap.Int("количество", len(sqlFiles)),
+		zap.String("директория", migrationsDir),
+	)
+
+	for _, file := range sqlFiles {
+		path := filepath.Join(migrationsDir, file)
+		sql, err := os.ReadFile(path)
+		if err != nil {
+			logger.Error("ошибка чтения миграции",
+				zap.String("файл", file),
+				zap.Error(err),
+			)
+			continue
+		}
+
+		_, err = pg.Pool.Exec(ctx, string(sql))
+		if err != nil {
+			logger.Error("ошибка применения миграции",
+				zap.String("файл", file),
+				zap.Error(err),
+			)
+			continue
+		}
+
+		logger.Info("миграция применена",
+			zap.String("файл", file),
+		)
+	}
 }

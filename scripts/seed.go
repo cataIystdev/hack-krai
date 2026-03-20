@@ -39,6 +39,7 @@ type seedLocation struct {
 	Latitude         float64
 	Longitude        float64
 	Slug             string
+	PreviewImageURL  string
 }
 
 func main() {
@@ -78,6 +79,14 @@ func main() {
 	}
 	log.Printf("Seed-хост ID: %s\n", ownerID)
 
+	// Создание demo-туриста для демонстрации.
+	touristID, err := ensureDemoTourist(ctx, pool)
+	if err != nil {
+		log.Printf("Предупреждение: не удалось создать demo-туриста: %v", err)
+	} else {
+		log.Printf("Demo-турист ID: %s\n", touristID)
+	}
+
 	// Очистка таблицы locations.
 	_, err = pool.Exec(ctx, "DELETE FROM locations")
 	if err != nil {
@@ -93,19 +102,19 @@ func main() {
 				owner_id, slug, name, description_short, description_full,
 				category, tags, price_per_night, capacity,
 				access_level, density_level, child_friendly,
-				address, is_published,
+				address, is_published, preview_image_url,
 				geo
 			) VALUES (
 				$1, $2, $3, $4, $5,
 				$6, $7, $8, $9,
 				$10, $11, $12,
-				$13, $14,
-				ST_SetSRID(ST_MakePoint($15, $16), 4326)
+				$13, $14, $15,
+				ST_SetSRID(ST_MakePoint($16, $17), 4326)
 			)`,
 			ownerID, loc.Slug, loc.Name, loc.DescriptionShort, loc.DescriptionFull,
 			loc.Category, loc.Tags, loc.PricePerNight, loc.Capacity,
 			loc.AccessLevel, loc.DensityLevel, loc.ChildFriendly,
-			loc.Address, loc.IsPublished,
+			loc.Address, loc.IsPublished, loc.PreviewImageURL,
 			loc.Longitude, loc.Latitude,
 		)
 		if err != nil {
@@ -114,13 +123,16 @@ func main() {
 		log.Printf("[%d/20] %s (%.4f, %.4f)\n", i+1, loc.Name, loc.Latitude, loc.Longitude)
 	}
 
-	log.Println("Seed завершён: 20 локаций Краснодарского края успешно загружены")
+	// Обновление swipe scenes: добавление placeholder image URLs.
+	updateSwipeSceneImages(ctx, pool)
+
+	log.Println("Seed завершён: 20 локаций + demo users + swipe images")
 }
 
 // ensureSeedHost создаёт пользователя-хоста если его нет, возвращает ID.
 func ensureSeedHost(ctx context.Context, pool *pgxpool.Pool) (string, error) {
 	var id string
-	err := pool.QueryRow(ctx, "SELECT id FROM users WHERE email = 'seed_host@deepkrai.ru'").Scan(&id)
+	err := pool.QueryRow(ctx, "SELECT id FROM users WHERE email = 'seed_host@kudytudy.ru'").Scan(&id)
 	if err == nil {
 		return id, nil
 	}
@@ -128,7 +140,7 @@ func ensureSeedHost(ctx context.Context, pool *pgxpool.Pool) (string, error) {
 	// Создание хоста (пароль: bcrypt hash "seedpassword123").
 	err = pool.QueryRow(ctx, `
 		INSERT INTO users (email, password_hash, role, display_name)
-		VALUES ('seed_host@deepkrai.ru', '$2a$12$LJ3m4ys2Kq5yGZvADfQZ3OZwNPBiDp6hzKqCzVONwGDHfQKh0IKPa', 'host', 'Seed Host')
+		VALUES ('seed_host@kudytudy.ru', '$2a$12$LJ3m4ys2Kq5yGZvADfQZ3OZwNPBiDp6hzKqCzVONwGDHfQKh0IKPa', 'host', 'Demo Host')
 		ON CONFLICT (email) DO UPDATE SET role = 'host'
 		RETURNING id
 	`).Scan(&id)
@@ -136,6 +148,48 @@ func ensureSeedHost(ctx context.Context, pool *pgxpool.Pool) (string, error) {
 		return "", fmt.Errorf("ошибка создания seed-хоста: %w", err)
 	}
 	return id, nil
+}
+
+// ensureDemoTourist создаёт demo-туриста для демонстрации (пароль: demo123).
+func ensureDemoTourist(ctx context.Context, pool *pgxpool.Pool) (string, error) {
+	var id string
+	err := pool.QueryRow(ctx, "SELECT id FROM users WHERE email = 'demo@kudytudy.ru'").Scan(&id)
+	if err == nil {
+		return id, nil
+	}
+
+	err = pool.QueryRow(ctx, `
+		INSERT INTO users (email, password_hash, role, display_name)
+		VALUES ('demo@kudytudy.ru', '$2a$12$LJ3m4ys2Kq5yGZvADfQZ3OZwNPBiDp6hzKqCzVONwGDHfQKh0IKPa', 'tourist', 'Демо-Турист')
+		ON CONFLICT (email) DO UPDATE SET role = 'tourist'
+		RETURNING id
+	`).Scan(&id)
+	if err != nil {
+		return "", fmt.Errorf("ошибка создания demo-туриста: %w", err)
+	}
+	return id, nil
+}
+
+// updateSwipeSceneImages обновляет пустые image_url в swipe_scenes placeholder-ами.
+func updateSwipeSceneImages(ctx context.Context, pool *pgxpool.Pool) {
+	sceneImages := map[string]string{
+		"a1b2c3d4-1111-4000-8000-000000000001": "https://storage.kudytudy.ru/scenes/mountain-sunrise.jpg",
+		"a1b2c3d4-2222-4000-8000-000000000002": "https://storage.kudytudy.ru/scenes/sea-sunset.jpg",
+		"a1b2c3d4-3333-4000-8000-000000000003": "https://storage.kudytudy.ru/scenes/farm-breakfast.jpg",
+		"a1b2c3d4-4444-4000-8000-000000000004": "https://storage.kudytudy.ru/scenes/night-city.jpg",
+		"a1b2c3d4-5555-4000-8000-000000000005": "https://storage.kudytudy.ru/scenes/forest-trail.jpg",
+		"a1b2c3d4-6666-4000-8000-000000000006": "https://storage.kudytudy.ru/scenes/winter-sport.jpg",
+		"a1b2c3d4-7777-4000-8000-000000000007": "https://storage.kudytudy.ru/scenes/gastro-tour.jpg",
+		"a1b2c3d4-8888-4000-8000-000000000008": "https://storage.kudytudy.ru/scenes/cultural-heritage.jpg",
+	}
+
+	for sceneID, imageURL := range sceneImages {
+		_, err := pool.Exec(ctx, `UPDATE swipe_scenes SET image_url = $1 WHERE id = $2 AND image_url = ''`, imageURL, sceneID)
+		if err != nil {
+			log.Printf("Предупреждение: не удалось обновить image_url для сцены %s: %v", sceneID, err)
+		}
+	}
+	log.Println("Swipe scene images обновлены")
 }
 
 // envOrDefault возвращает значение переменной окружения или значение по умолчанию.
@@ -168,6 +222,7 @@ func getSeedLocations() []seedLocation {
 			IsPublished:      true,
 			Latitude:         44.6979,
 			Longitude:        37.5949,
+			PreviewImageURL:  "https://storage.kudytudy.ru/locations/abrau-dyurso.jpg",
 		},
 		{
 			Name:             "Винодельня Лефкадия",
@@ -185,6 +240,7 @@ func getSeedLocations() []seedLocation {
 			IsPublished:      true,
 			Latitude:         44.7230,
 			Longitude:        37.7810,
+			PreviewImageURL:  "https://storage.kudytudy.ru/locations/lefkadiya.jpg",
 		},
 		{
 			Name:             "Козья ферма дяди Вани",
@@ -202,6 +258,7 @@ func getSeedLocations() []seedLocation {
 			IsPublished:      true,
 			Latitude:         44.2878,
 			Longitude:        40.1763,
+			PreviewImageURL:  "https://storage.kudytudy.ru/locations/kozya-ferma.jpg",
 		},
 		{
 			Name:             "Плато Лаго-Наки",
@@ -219,6 +276,7 @@ func getSeedLocations() []seedLocation {
 			IsPublished:      true,
 			Latitude:         44.0580,
 			Longitude:        39.9800,
+			PreviewImageURL:  "https://storage.kudytudy.ru/locations/lago-naki.jpg",
 		},
 		{
 			Name:             "Гостевой дом Горная тишина",
@@ -236,6 +294,7 @@ func getSeedLocations() []seedLocation {
 			IsPublished:      true,
 			Latitude:         44.2613,
 			Longitude:        40.2048,
+			PreviewImageURL:  "https://storage.kudytudy.ru/locations/gornaya-tishina.jpg",
 		},
 		{
 			Name:             "Гастро-маркет Море вкусов",
@@ -253,6 +312,7 @@ func getSeedLocations() []seedLocation {
 			IsPublished:      true,
 			Latitude:         45.0355,
 			Longitude:        38.9753,
+			PreviewImageURL:  "https://storage.kudytudy.ru/locations/more-vkusov.jpg",
 		},
 		{
 			Name:             "Скала Парус",
@@ -270,6 +330,7 @@ func getSeedLocations() []seedLocation {
 			IsPublished:      true,
 			Latitude:         44.4343,
 			Longitude:        38.1793,
+			PreviewImageURL:  "https://storage.kudytudy.ru/locations/skala-parus.jpg",
 		},
 		{
 			Name:             "33 водопада",
@@ -287,6 +348,7 @@ func getSeedLocations() []seedLocation {
 			IsPublished:      true,
 			Latitude:         43.8436,
 			Longitude:        39.5613,
+			PreviewImageURL:  "https://storage.kudytudy.ru/locations/33-vodopada.jpg",
 		},
 		{
 			Name:             "Виноградники Мысхако",
@@ -304,6 +366,7 @@ func getSeedLocations() []seedLocation {
 			IsPublished:      true,
 			Latitude:         44.6571,
 			Longitude:        37.7710,
+			PreviewImageURL:  "https://storage.kudytudy.ru/locations/myskhako.jpg",
 		},
 		{
 			Name:             "Горячий Ключ: Дантово ущелье",
@@ -321,6 +384,7 @@ func getSeedLocations() []seedLocation {
 			IsPublished:      true,
 			Latitude:         44.6307,
 			Longitude:        39.0956,
+			PreviewImageURL:  "https://storage.kudytudy.ru/locations/dantovo-ushchelye.jpg",
 		},
 		{
 			Name:             "Глэмпинг Поляна у ручья",
@@ -338,6 +402,7 @@ func getSeedLocations() []seedLocation {
 			IsPublished:      true,
 			Latitude:         44.1990,
 			Longitude:        39.9580,
+			PreviewImageURL:  "https://storage.kudytudy.ru/locations/polyana-u-ruchya.jpg",
 		},
 		{
 			Name:             "Пасека деда Михалыча",
@@ -355,6 +420,7 @@ func getSeedLocations() []seedLocation {
 			IsPublished:      true,
 			Latitude:         44.5500,
 			Longitude:        38.5600,
+			PreviewImageURL:  "https://storage.kudytudy.ru/locations/paseka-mikhalycha.jpg",
 		},
 		{
 			Name:             "Красная Поляна: Горки Город",
@@ -372,6 +438,7 @@ func getSeedLocations() []seedLocation {
 			IsPublished:      true,
 			Latitude:         43.6614,
 			Longitude:        40.2699,
+			PreviewImageURL:  "https://storage.kudytudy.ru/locations/gorki-gorod.jpg",
 		},
 		{
 			Name:             "Кипарисовое озеро",
@@ -389,6 +456,7 @@ func getSeedLocations() []seedLocation {
 			IsPublished:      true,
 			Latitude:         44.8072,
 			Longitude:        37.3889,
+			PreviewImageURL:  "https://storage.kudytudy.ru/locations/kiparisovoe-ozero.jpg",
 		},
 		{
 			Name:             "Тайная тропа к дольменам",
@@ -406,6 +474,7 @@ func getSeedLocations() []seedLocation {
 			IsPublished:      true,
 			Latitude:         44.0875,
 			Longitude:        39.0723,
+			PreviewImageURL:  "https://storage.kudytudy.ru/locations/dolmeny.jpg",
 		},
 		{
 			Name:             "Рафтинг на реке Белая",
@@ -423,6 +492,7 @@ func getSeedLocations() []seedLocation {
 			IsPublished:      true,
 			Latitude:         44.3000,
 			Longitude:        40.1700,
+			PreviewImageURL:  "https://storage.kudytudy.ru/locations/rafting-belaya.jpg",
 		},
 		{
 			Name:             "Этнографический комплекс Атамань",
@@ -440,6 +510,7 @@ func getSeedLocations() []seedLocation {
 			IsPublished:      true,
 			Latitude:         45.2106,
 			Longitude:        36.7114,
+			PreviewImageURL:  "https://storage.kudytudy.ru/locations/ataman.jpg",
 		},
 		{
 			Name:             "Тихая бухта у Прасковеевки",
@@ -457,6 +528,7 @@ func getSeedLocations() []seedLocation {
 			IsPublished:      true,
 			Latitude:         44.4300,
 			Longitude:        38.1700,
+			PreviewImageURL:  "https://storage.kudytudy.ru/locations/tikhaya-bukhta.jpg",
 		},
 		{
 			Name:             "Ферма Кубанский двор",
@@ -474,6 +546,7 @@ func getSeedLocations() []seedLocation {
 			IsPublished:      true,
 			Latitude:         44.5100,
 			Longitude:        39.6800,
+			PreviewImageURL:  "https://storage.kudytudy.ru/locations/kubanskiy-dvor.jpg",
 		},
 		{
 			Name:             "Орлиная полка",
@@ -491,6 +564,7 @@ func getSeedLocations() []seedLocation {
 			IsPublished:      true,
 			Latitude:         44.2100,
 			Longitude:        39.9400,
+			PreviewImageURL:  "https://storage.kudytudy.ru/locations/orlinaya-polka.jpg",
 		},
 	}
 }

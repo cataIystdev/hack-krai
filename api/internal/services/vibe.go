@@ -35,12 +35,13 @@ type STTClient interface {
 
 // VibeService — сервис мультимодального vibe-профилирования.
 type VibeService struct {
-	stt        STTClient
-	llm        *ai.LLMClient
-	embeddings *ai.EmbeddingsClient
-	vibeRepo   *database.VibeRepository
-	storage    *StorageService
-	logger     *zap.Logger
+	stt          STTClient
+	llm          *ai.LLMClient
+	embeddings   *ai.EmbeddingsClient
+	vibeRepo     *database.VibeRepository
+	locationRepo *database.LocationRepository
+	storage      *StorageService
+	logger       *zap.Logger
 }
 
 // NewVibeService создаёт сервис vibe-профилирования.
@@ -49,16 +50,18 @@ func NewVibeService(
 	llm *ai.LLMClient,
 	embeddings *ai.EmbeddingsClient,
 	vibeRepo *database.VibeRepository,
+	locationRepo *database.LocationRepository,
 	storage *StorageService,
 	logger *zap.Logger,
 ) *VibeService {
 	return &VibeService{
-		stt:        stt,
-		llm:        llm,
-		embeddings: embeddings,
-		vibeRepo:   vibeRepo,
-		storage:    storage,
-		logger:     logger.Named("vibe_service"),
+		stt:          stt,
+		llm:          llm,
+		embeddings:   embeddings,
+		vibeRepo:     vibeRepo,
+		locationRepo: locationRepo,
+		storage:      storage,
+		logger:       logger.Named("vibe_service"),
 	}
 }
 
@@ -206,6 +209,7 @@ func (s *VibeService) Swipe(ctx context.Context, userID uuid.UUID, sceneID strin
 
 // Finalize выполняет финальный поиск Top-10 ближайших локаций на основе vibe-вектора.
 // Берёт вектор пользователя из Qdrant (user_vibes) и ищет ближайшие в location_vibes.
+// Обогащает результаты данными из PostgreSQL (preview image, tags, координаты).
 func (s *VibeService) Finalize(ctx context.Context, userID uuid.UUID) (*models.FinalizeResponse, error) {
 	s.logger.Info("финализация профиля",
 		zap.String("user_id", userID.String()),
@@ -221,6 +225,43 @@ func (s *VibeService) Finalize(ctx context.Context, userID uuid.UUID) (*models.F
 	recommendations, err := s.vibeRepo.SearchNearest(ctx, database.CollectionLocationVibes, userVector, 10)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка поиска рекомендаций: %w", err)
+	}
+
+	// Обогащение рекомендаций данными из PostgreSQL.
+	if len(recommendations) > 0 && s.locationRepo != nil {
+		ids := make([]string, len(recommendations))
+		for i, rec := range recommendations {
+			ids[i] = rec.LocationID
+		}
+
+		locations, err := s.locationRepo.FindByIDs(ctx, ids)
+		if err != nil {
+			s.logger.Warn("ошибка обогащения рекомендаций, возвращаем базовые данные",
+				zap.Error(err),
+			)
+		} else {
+			// Построение карты для быстрого поиска.
+			locMap := make(map[string]models.Location, len(locations))
+			for _, loc := range locations {
+				locMap[loc.ID.String()] = loc
+			}
+
+			for i, rec := range recommendations {
+				if loc, ok := locMap[rec.LocationID]; ok {
+					recommendations[i].Name = loc.Name
+					recommendations[i].Category = loc.Category
+					recommendations[i].DescriptionShort = loc.DescriptionShort
+					recommendations[i].Tags = loc.Tags
+					recommendations[i].PreviewImageURL = loc.PreviewImageURL
+					recommendations[i].Latitude = loc.Latitude
+					recommendations[i].Longitude = loc.Longitude
+					recommendations[i].DensityLevel = string(loc.DensityLevel)
+					if loc.SplatURL != nil {
+						recommendations[i].SplatURL = *loc.SplatURL
+					}
+				}
+			}
+		}
 	}
 
 	return &models.FinalizeResponse{
