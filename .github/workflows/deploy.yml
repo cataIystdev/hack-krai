@@ -52,7 +52,18 @@ jobs:
             # 4. Apply environment configuration
             if [ -f "$CONFIG_DIR/.env.$ENV_NAME" ]; then
               cp "$CONFIG_DIR/.env.$ENV_NAME" $DEPLOY_DIR/.env
-              echo "✅ Configuration .env.$ENV_NAME applied successfully."
+              
+              # Автоматически прописываем внутренние имена Docker-контейнеров вместо localhost
+              sed -i 's/POSTGRES_HOST=.*/POSTGRES_HOST=postgres/' $DEPLOY_DIR/.env
+              sed -i 's/REDIS_HOST=.*/REDIS_HOST=redis/' $DEPLOY_DIR/.env
+              sed -i 's/QDRANT_HOST=.*/QDRANT_HOST=qdrant/' $DEPLOY_DIR/.env
+              sed -i 's/NEO4J_HOST=.*/NEO4J_HOST=neo4j/' $DEPLOY_DIR/.env
+              sed -i 's/CLICKHOUSE_HOST=.*/CLICKHOUSE_HOST=clickhouse/' $DEPLOY_DIR/.env
+              sed -i 's/MINIO_HOST=.*/MINIO_HOST=minio/' $DEPLOY_DIR/.env
+              sed -i 's/VOSK_HOST=.*/VOSK_HOST=vosk/' $DEPLOY_DIR/.env
+              sed -i 's|AI_EMBEDDINGS_BASE_URL=.*|AI_EMBEDDINGS_BASE_URL=http://embeddings-server:7997/|' $DEPLOY_DIR/.env
+              
+              echo "✅ Configuration .env.$ENV_NAME applied and adapted for Docker successfully."
             else
               echo "⚠️ WARNING: Environment file $CONFIG_DIR/.env.$ENV_NAME not found."
             fi
