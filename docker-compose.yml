@@ -90,7 +90,7 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:6333/healthz || exit 1"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333'"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -213,10 +213,11 @@ services:
       - kudytudy-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7997/docs"]
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:7997/docs')\""]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
 
 # --- Именованные тома --------------------------------------------------------
 # Данные каждого сервиса хранятся в отдельном именованном томе Docker.
