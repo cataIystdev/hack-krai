@@ -21,6 +21,8 @@ services:
       - "${PORT:-8080}:8080"
     env_file:
       - .env
+    volumes:
+      - ./.env:/.env:ro
     depends_on:
       - postgres
       - redis
