@@ -21,6 +21,7 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           password: ${{ secrets.SERVER_PASSWORD }}
+          envs: BRANCH_NAME, REPO_URL
           command_timeout: 45m
           script: |
             set -xe # Включаем подробное логирование каждой команды и прерывание при ошибках
