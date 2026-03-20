@@ -75,7 +75,6 @@ jobs:
               sed -i 's/VOSK_HOST=.*/VOSK_HOST=vosk/' $DEPLOY_DIR/.env.api
               sed -i 's/VOSK_PORT=.*/VOSK_PORT=2700/' $DEPLOY_DIR/.env.api
               sed -i 's|AI_EMBEDDINGS_BASE_URL=.*|AI_EMBEDDINGS_BASE_URL=http://embeddings-server:7997/|' $DEPLOY_DIR/.env.api
-              sed -i 's/^PORT=.*/PORT=8080/' $DEPLOY_DIR/.env.api
               
               echo "✅ Configuration .env.$ENV_NAME applied and adapted for Docker successfully."
             else
@@ -94,6 +93,6 @@ jobs:
             echo "=== API CONTAINER LOGS (last 50 lines) ==="
             docker compose --project-name deepkrai-$ENV_NAME logs --tail=50 api
             echo "=== HEALTH CHECK ==="
-            curl -sf http://localhost:${PORT:-8080}/api/v1/health && echo "\n✅ API is healthy!" || echo "❌ API health check failed!"
+            curl -sf http://localhost:$(grep '^APP_PORT=' $DEPLOY_DIR/.env.api | cut -d= -f2 || echo 8080)/api/v1/health && echo "\n✅ API is healthy!" || echo "❌ API health check failed!"
 
             echo "🎉 Deployment of $ENV_NAME complete."
