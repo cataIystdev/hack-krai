@@ -16,7 +16,6 @@ services:
   # запросов (ST_DWithin, ST_Contains и другие).
   postgres:
     image: postgis/postgis:16-3.4
-    container_name: deepkrai-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -40,7 +39,6 @@ services:
   # Используется alpine-образ для минимального размера.
   redis:
     image: redis:7-alpine
-    container_name: deepkrai-redis
     restart: unless-stopped
     command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes
     ports:
@@ -62,7 +60,6 @@ services:
   # HTTP API на порту 6333, gRPC на порту 6334.
   qdrant:
     image: qdrant/qdrant:latest
-    container_name: deepkrai-qdrant
     restart: unless-stopped
     ports:
       - "${QDRANT_HTTP_PORT}:6333"
@@ -84,7 +81,6 @@ services:
   # Bolt-протокол на порту 7687, веб-интерфейс на 7474.
   neo4j:
     image: neo4j:5
-    container_name: deepkrai-neo4j
     restart: unless-stopped
     environment:
       NEO4J_AUTH: ${NEO4J_USER}/${NEO4J_PASSWORD}
@@ -114,7 +110,6 @@ services:
   # Нативный протокол на порту 9000, HTTP API на 8123.
   clickhouse:
     image: clickhouse/clickhouse-server:24
-    container_name: deepkrai-clickhouse
     restart: unless-stopped
     environment:
       CLICKHOUSE_USER: ${CLICKHOUSE_USER}
@@ -146,7 +141,6 @@ services:
   # API на порту 9000, консоль управления на 9001.
   minio:
     image: minio/minio:latest
-    container_name: deepkrai-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
@@ -172,7 +166,6 @@ services:
   # Используется вместо Whisper API для конвертации голоса в текст.
   vosk:
     image: alphacep/kaldi-ru:latest
-    container_name: deepkrai-vosk
     restart: unless-stopped
     ports:
       - "${VOSK_PORT:-2700}:2700"
@@ -191,7 +184,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.embeddings
-    container_name: deepkrai-embeddings
     ports:
       - "${EMBEDDINGS_PORT:-7997}:7997"
     networks:
@@ -208,25 +200,16 @@ services:
 # Для полной очистки: docker compose down -v
 volumes:
   postgres_data:
-    name: deepkrai-postgres-data
   redis_data:
-    name: deepkrai-redis-data
   qdrant_data:
-    name: deepkrai-qdrant-data
   neo4j_data:
-    name: deepkrai-neo4j-data
   neo4j_logs:
-    name: deepkrai-neo4j-logs
   clickhouse_data:
-    name: deepkrai-clickhouse-data
   clickhouse_logs:
-    name: deepkrai-clickhouse-logs
   minio_data:
-    name: deepkrai-minio-data
 
 # --- Сеть ---------------------------------------------------------------------
 # Общая bridge-сеть для взаимодействия сервисов между собой.
 networks:
   deepkrai-network:
-    name: deepkrai-network
     driver: bridge
