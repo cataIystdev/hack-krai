@@ -2,7 +2,10 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Устанавливаем зависимости с зеркала Tsinghua для обхода таймаутов
+# Устанавливаем легковесную CPU-версию PyTorch (экономит ~3ГБ загрузки и ускоряет сборку в CI/CD)
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
+# Устанавливаем остальные зависимости с зеркала Tsinghua
 RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple --no-cache-dir fastapi uvicorn sentence-transformers pydantic
 
 # Копируем скрипт сервера

@@ -22,6 +22,7 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           password: ${{ secrets.SERVER_PASSWORD }}
           envs: BRANCH_NAME, REPO_URL
+          command_timeout: 45m
           script: |
             export ENV_NAME=$BRANCH_NAME
             export DEPLOY_DIR=/opt/deepkrai/$ENV_NAME
