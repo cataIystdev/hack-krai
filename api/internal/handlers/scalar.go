@@ -69,7 +69,10 @@ func (h *ScalarHandler) ServeUI(c fiber.Ctx) error {
 // Возвращает полную спецификацию OpenAPI 3.1 в формате JSON.
 // URL сервера формируется динамически из заголовка Host входящего запроса.
 func (h *ScalarHandler) ServeSpec(c fiber.Ctx) error {
-	scheme := c.Protocol()
+	scheme := "http"
+	if c.Secure() {
+		scheme = "https"
+	}
 	host := c.Get("Host")
 	baseURL := scheme + "://" + host
 	return c.JSON(OpenAPISpec(baseURL))
