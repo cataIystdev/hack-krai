@@ -1,4 +1,4 @@
-// Файл openapi.go содержит полную спецификацию OpenAPI 3.1 для Deep Krai API.
+// Файл openapi.go содержит полную спецификацию OpenAPI 3.1 для КудыТуды API.
 // Спецификация описывает все реализованные эндпоинты с подробными описаниями
 // параметров, тел запросов, ответов, примеров и схем данных.
 // Генерируется программно для обеспечения синхронизации с кодом.
@@ -11,11 +11,11 @@ func OpenAPISpec(baseURL string) map[string]any {
 	return map[string]any{
 		"openapi": "3.1.0",
 		"info": map[string]any{
-			"title":       "Deep Krai API",
+			"title":       "КудыТуды API",
 			"version":     "1.0.0",
-			"description": "REST API платформы пространственного туризма Deep Krai.\n\nDeep Krai -- PWA-платформа, соединяющая путешественников со скрытыми местами Краснодарского края через мультимодальный ИИ, 3D-визуализацию (Gaussian Splatting) и интеллектуальное построение маршрутов.\n\n## Аутентификация\n\nAPI использует JWT (JSON Web Tokens) для аутентификации.\nДля доступа к защищённым эндпоинтам передавайте access-токен в заголовке `Authorization: Bearer <token>`.\nТокены получаются через POST /api/v1/auth/login или POST /api/v1/auth/register.",
+			"description": "REST API платформы пространственного туризма КудыТуды.\n\nКудыТуды -- PWA-платформа, соединяющая путешественников со скрытыми местами Краснодарского края через мультимодальный ИИ, 3D-визуализацию (Gaussian Splatting) и интеллектуальное построение маршрутов.\n\n## Аутентификация\n\nAPI использует JWT (JSON Web Tokens) для аутентификации.\nДля доступа к защищённым эндпоинтам передавайте access-токен в заголовке `Authorization: Bearer <token>`.\nТокены получаются через POST /api/v1/auth/login или POST /api/v1/auth/register.",
 			"contact": map[string]any{
-				"name": "Deep Krai Team",
+				"name": "КудыТуды Team",
 			},
 			"license": map[string]any{
 				"name": "Proprietary",
@@ -66,7 +66,7 @@ func OpenAPISpec(baseURL string) map[string]any {
 				"get": map[string]any{
 					"tags":        []string{"Информация"},
 					"summary":     "Информация о сервере",
-					"description": "Возвращает базовую информацию о сервере Deep Krai API: имя сервиса, версию и текущий статус работы. Используется для быстрой проверки доступности сервера.",
+					"description": "Возвращает базовую информацию о сервере КудыТуды API: имя сервиса, версию и текущий статус работы. Используется для быстрой проверки доступности сервера.",
 					"operationId": "getServerInfo",
 					"responses": map[string]any{
 						"200": map[string]any{
@@ -77,7 +77,7 @@ func OpenAPISpec(baseURL string) map[string]any {
 										"$ref": "#/components/schemas/ServerInfo",
 									},
 									"example": map[string]any{
-										"service": "Deep Krai API",
+										"service": "КудыТуды API",
 										"version": "1.0.0",
 										"status":  "running",
 									},
@@ -698,12 +698,12 @@ func OpenAPISpec(baseURL string) map[string]any {
 			"schemas": map[string]any{
 				"ServerInfo": map[string]any{
 					"type":        "object",
-					"description": "Базовая информация о сервере Deep Krai API.",
+					"description": "Базовая информация о сервере КудыТуды API.",
 					"properties": map[string]any{
 						"service": map[string]any{
 							"type":        "string",
 							"description": "Название сервиса.",
-							"example":     "Deep Krai API",
+							"example":     "КудыТуды API",
 						},
 						"version": map[string]any{
 							"type":        "string",

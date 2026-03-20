@@ -62,7 +62,7 @@ func Load(envPath string) (*AppConfig, error) {
 // Значения выбраны для режима разработки (development).
 func setDefaults(v *viper.Viper) {
 	// Приложение
-	v.SetDefault("APP_NAME", "deep-krai-api")
+	v.SetDefault("APP_NAME", "kudytudy-api")
 	v.SetDefault("APP_ENV", "development")
 	v.SetDefault("APP_PORT", 8080)
 	v.SetDefault("APP_LOG_LEVEL", "debug")
@@ -115,7 +115,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("JWT_SECRET", "")
 	v.SetDefault("JWT_ACCESS_TTL_MINUTES", 15)
 	v.SetDefault("JWT_REFRESH_TTL_HOURS", 168)
-	v.SetDefault("JWT_ISSUER", "deep-krai-api")
+	v.SetDefault("JWT_ISSUER", "kudytudy-api")
 
 	// AI (OnlySQ API)
 	v.SetDefault("AI_BASE_URL", "https://api.onlysq.ru/ai/openai/")

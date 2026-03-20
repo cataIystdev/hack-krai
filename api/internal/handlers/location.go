@@ -9,10 +9,10 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"go.uber.org/zap"
 
-	"deep-krai-api/internal/database"
-	"deep-krai-api/internal/middleware"
-	"deep-krai-api/internal/models"
-	"deep-krai-api/internal/services"
+	"kudytudy-api/internal/database"
+	"kudytudy-api/internal/middleware"
+	"kudytudy-api/internal/models"
+	"kudytudy-api/internal/services"
 )
 
 // LocationHandler — обработчик HTTP-запросов для управления локациями.

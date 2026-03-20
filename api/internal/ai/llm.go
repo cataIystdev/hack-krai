@@ -13,12 +13,12 @@ import (
 
 	"go.uber.org/zap"
 
-	"deep-krai-api/internal/config"
+	"kudytudy-api/internal/config"
 )
 
 // vibeSystemPrompt — системный промпт для LLM, задающий формат ответа.
-// Оси и формат JSON соответствуют GDD (deep_krai_gdd.md).
-const vibeSystemPrompt = `Ты — AI-профайлер туристической платформы Deep Krai. Проанализируй текст пользователя
+// Оси и формат JSON соответствуют GDD (kudytudy_gdd.md).
+const vibeSystemPrompt = `Ты — AI-профайлер туристической платформы КудыТуды. Проанализируй текст пользователя
 и определи его эмоциональное состояние и предпочтения. Верни ТОЛЬКО JSON (без markdown, без пояснений):
 
 {

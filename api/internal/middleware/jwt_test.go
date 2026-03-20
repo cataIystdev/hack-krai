@@ -15,8 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"deep-krai-api/internal/config"
-	"deep-krai-api/internal/services"
+	"kudytudy-api/internal/config"
+	"kudytudy-api/internal/services"
 )
 
 // testJWTService создаёт JWT-сервис с тестовыми настройками.

@@ -14,7 +14,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"deep-krai-api/internal/config"
+	"kudytudy-api/internal/config"
 )
 
 // WhisperClient — клиент для распознавания речи через Whisper API.

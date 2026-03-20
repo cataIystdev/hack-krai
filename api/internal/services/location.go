@@ -10,8 +10,8 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	"deep-krai-api/internal/database"
-	"deep-krai-api/internal/models"
+	"kudytudy-api/internal/database"
+	"kudytudy-api/internal/models"
 )
 
 // LocationService — сервис управления локациями.

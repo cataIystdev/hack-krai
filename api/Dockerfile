@@ -14,7 +14,7 @@ RUN go mod download
 COPY . .
 
 # Сборка бинарного файла
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -installsuffix cgo -o deepkrai-api ./cmd/api/main.go
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -installsuffix cgo -o kudytudy-api ./cmd/api/main.go
 
 # Минимальный рантайм
 FROM alpine:latest
@@ -24,9 +24,9 @@ WORKDIR /app
 RUN apk --no-cache add ca-certificates tzdata
 
 # Копируем бинарник из билдера
-COPY --from=builder /app/deepkrai-api .
+COPY --from=builder /app/kudytudy-api .
 
 # По умолчанию API работает на порту 8080 (или берется из .env)
 EXPOSE 8080
 
-CMD ["./deepkrai-api"]
+CMD ["./kudytudy-api"]

@@ -108,7 +108,7 @@ CREATE INDEX IF NOT EXISTS idx_locations_published ON locations (is_published);
 
 -- Комментарии к таблице и ключевым колонкам.
 COMMENT ON
-TABLE locations IS 'Туристические локации Deep Krai с пространственными координатами (PostGIS)';
+TABLE locations IS 'Туристические локации КудыТуды с пространственными координатами (PostGIS)';
 
 COMMENT ON COLUMN locations.geo IS 'Координаты GEOMETRY(Point, 4326) для пространственных запросов (GiST)';
 

@@ -17,9 +17,9 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	"deep-krai-api/internal/ai"
-	"deep-krai-api/internal/database"
-	"deep-krai-api/internal/models"
+	"kudytudy-api/internal/ai"
+	"kudytudy-api/internal/database"
+	"kudytudy-api/internal/models"
 )
 
 // swipeAlpha — коэффициент сохранения исходного вектора при свайпе.

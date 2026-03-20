@@ -12,7 +12,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"go.uber.org/zap"
 
-	"deep-krai-api/internal/config"
+	"kudytudy-api/internal/config"
 )
 
 // Типы токенов для различения access и refresh при валидации.
@@ -36,7 +36,7 @@ var (
 	ErrInvalidTokenType = errors.New("некорректный тип токена")
 )
 
-// TokenClaims — структура claims для JWT-токена Deep Krai.
+// TokenClaims — структура claims для JWT-токена КудыТуды.
 // Содержит идентификатор пользователя, роль и тип токена (access/refresh).
 // Встраивает стандартные RegisteredClaims (iss, sub, exp, iat).
 type TokenClaims struct {

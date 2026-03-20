@@ -14,7 +14,7 @@ import (
 	"github.com/minio/minio-go/v7"
 	"go.uber.org/zap"
 
-	"deep-krai-api/internal/database"
+	"kudytudy-api/internal/database"
 )
 
 // StorageService — сервис для работы с объектным хранилищем MinIO.

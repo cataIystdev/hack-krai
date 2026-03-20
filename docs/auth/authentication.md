@@ -1,8 +1,8 @@
-# Документация: Аутентификация Deep Krai API
+# Документация: Аутентификация КудыТуды API
 
 ## Общие сведения
 
-Система аутентификации Deep Krai API построена на JWT (JSON Web Tokens) с HMAC-SHA256 подписью и ролевой моделью доступа (RBAC).
+Система аутентификации КудыТуды API построена на JWT (JSON Web Tokens) с HMAC-SHA256 подписью и ролевой моделью доступа (RBAC).
 
 ## Роли пользователей
 
@@ -24,7 +24,7 @@
 | user_id    | UUID пользователя                |
 | role       | Роль (tourist/host/b2g_admin)    |
 | token_type | Тип: "access" или "refresh"      |
-| iss        | Issuer (deep-krai-api)           |
+| iss        | Issuer (kudytudy-api)           |
 | sub        | Subject (UUID пользователя)      |
 | exp        | Время истечения (Unix timestamp) |
 | iat        | Время выпуска (Unix timestamp)   |

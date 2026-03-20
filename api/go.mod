@@ -1,4 +1,4 @@
-module deep-krai-api
+module kudytudy-api
 
 go 1.25.0
 

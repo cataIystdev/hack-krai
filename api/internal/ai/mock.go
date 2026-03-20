@@ -20,7 +20,7 @@ func mockTranscription() string {
 
 // mockVibeAxes возвращает детерминированные оси vibe-профиля.
 // Профиль описывает туриста, предпочитающего природный отдых с семьёй.
-// Оси соответствуют GDD (deep_krai_gdd.md).
+// Оси соответствуют GDD (kudytudy_gdd.md).
 func mockVibeAxes() *VibeAxes {
 	return &VibeAxes{
 		StressLevel:        0.7,

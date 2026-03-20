@@ -21,8 +21,8 @@ const scalarHTML = `<!DOCTYPE html>
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Deep Krai API — Документация</title>
-  <meta name="description" content="Интерактивная документация REST API платформы пространственного туризма Deep Krai." />
+  <title>КудыТуды API — Документация</title>
+  <meta name="description" content="Интерактивная документация REST API платформы пространственного туризма КудыТуды." />
   <style>
     body { margin: 0; padding: 0; }
   </style>
@@ -39,7 +39,7 @@ const scalarHTML = `<!DOCTYPE html>
       "hideDownloadButton": false,
       "searchHotKey": "k",
       "metaData": {
-        "title": "Deep Krai API — Документация"
+        "title": "КудыТуды API — Документация"
       }
     }'>
   </script>
