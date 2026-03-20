@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
 
-	"deep-krai-api/internal/config"
+	"kudytudy-api/internal/config"
 )
 
 // PostgresClient — обёртка над пулом подключений pgxpool.

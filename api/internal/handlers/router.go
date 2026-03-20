@@ -8,10 +8,10 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"go.uber.org/zap"
 
-	"deep-krai-api/internal/database"
-	"deep-krai-api/internal/middleware"
-	"deep-krai-api/internal/models"
-	"deep-krai-api/internal/services"
+	"kudytudy-api/internal/database"
+	"kudytudy-api/internal/middleware"
+	"kudytudy-api/internal/models"
+	"kudytudy-api/internal/services"
 )
 
 // SetupRoutes настраивает все маршруты API.
@@ -31,7 +31,7 @@ func SetupRoutes(
 	// Корневой маршрут — базовая информация о сервере.
 	app.Get("/", func(c fiber.Ctx) error {
 		return c.JSON(fiber.Map{
-			"service": "Deep Krai API",
+			"service": "КудыТуды API",
 			"version": "1.0.0",
 			"status":  "running",
 		})

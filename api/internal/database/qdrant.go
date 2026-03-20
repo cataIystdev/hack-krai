@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"deep-krai-api/internal/config"
+	"kudytudy-api/internal/config"
 )
 
 // QdrantClient — обёртка над gRPC-клиентом Qdrant.

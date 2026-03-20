@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"deep-krai-api/internal/database"
+	"kudytudy-api/internal/database"
 )
 
 // TestHealthCheckAllDown проверяет ответ health-эндпоинта, когда все БД недоступны.

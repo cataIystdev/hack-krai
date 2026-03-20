@@ -9,7 +9,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"go.uber.org/zap"
 
-	"deep-krai-api/internal/database"
+	"kudytudy-api/internal/database"
 )
 
 // HealthResponse — структура ответа health-эндпоинта.

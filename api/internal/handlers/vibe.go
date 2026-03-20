@@ -10,8 +10,8 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	"deep-krai-api/internal/models"
-	"deep-krai-api/internal/services"
+	"kudytudy-api/internal/models"
+	"kudytudy-api/internal/services"
 )
 
 // VibeHandler — обработчики для модуля vibe-профилирования.

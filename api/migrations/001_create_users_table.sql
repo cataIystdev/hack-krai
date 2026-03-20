@@ -48,7 +48,7 @@ updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW() );
 CREATE INDEX IF NOT EXISTS idx_users_email ON users (email);
 
 -- Комментарии к таблице и колонкам для документации схемы.
-COMMENT ON TABLE users IS 'Пользователи платформы Deep Krai';
+COMMENT ON TABLE users IS 'Пользователи платформы КудыТуды';
 
 COMMENT ON COLUMN users.id IS 'Уникальный идентификатор (UUID v4)';
 

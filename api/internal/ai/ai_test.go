@@ -1,6 +1,6 @@
 // Файл ai_test.go содержит unit-тесты для пакета ai.
 // Проверяет mock-функции, парсинг ответов и формат данных.
-// Оси соответствуют GDD (deep_krai_gdd.md).
+// Оси соответствуют GDD (kudytudy_gdd.md).
 package ai
 
 import (

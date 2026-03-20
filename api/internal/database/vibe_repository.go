@@ -13,7 +13,7 @@ import (
 	pb "github.com/qdrant/go-client/qdrant"
 	"go.uber.org/zap"
 
-	"deep-krai-api/internal/models"
+	"kudytudy-api/internal/models"
 )
 
 // Константы коллекций Qdrant.

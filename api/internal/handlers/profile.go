@@ -7,8 +7,8 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"go.uber.org/zap"
 
-	"deep-krai-api/internal/database"
-	"deep-krai-api/internal/middleware"
+	"kudytudy-api/internal/database"
+	"kudytudy-api/internal/middleware"
 )
 
 // ProfileHandler — обработчик запросов профиля пользователя.

@@ -10,7 +10,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"go.uber.org/zap"
 
-	"deep-krai-api/internal/services"
+	"kudytudy-api/internal/services"
 )
 
 // ContextKeyUserID — ключ для хранения user_id в контексте запроса.

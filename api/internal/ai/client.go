@@ -10,7 +10,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"deep-krai-api/internal/config"
+	"kudytudy-api/internal/config"
 )
 
 // Client — базовый HTTP-клиент для OnlySQ / OpenAI-совместимого API.

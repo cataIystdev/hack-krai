@@ -12,7 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"go.uber.org/zap"
 
-	"deep-krai-api/internal/models"
+	"kudytudy-api/internal/models"
 )
 
 // Ошибки репозитория поездок.

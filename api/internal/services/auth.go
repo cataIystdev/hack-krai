@@ -11,7 +11,7 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
 
-	"deep-krai-api/internal/database"
+	"kudytudy-api/internal/database"
 )
 
 // BcryptCost — стоимость хэширования bcrypt.

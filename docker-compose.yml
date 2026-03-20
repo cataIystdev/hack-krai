@@ -1,7 +1,7 @@
 # ==============================================================================
-# Deep Krai — Docker Compose
+# КудыТуды — Docker Compose
 # ==============================================================================
-# Инфраструктура из 6 сервисов баз данных для платформы Deep Krai.
+# Инфраструктура из 6 сервисов баз данных для платформы КудыТуды.
 # Все порты, пароли и параметры берутся из файла .env.
 #
 # Запуск:   docker compose up -d
@@ -11,7 +11,7 @@
 
 services:
   # --- Go API ------------------------------------------------------------------
-  # Сервер бизнес-логики Deep Krai
+  # Сервер бизнес-логики КудыТуды
   api:
     build:
       context: ./api
@@ -31,7 +31,7 @@ services:
       - clickhouse
       - qdrant
     networks:
-      - deepkrai-network
+      - kudytudy-network
 
   # --- PostgreSQL 16 + PostGIS ------------------------------------------------
   # Основная реляционная БД для пользователей, локаций, бронирований.
@@ -55,7 +55,7 @@ services:
       retries: 5
       start_period: 30s
     networks:
-      - deepkrai-network
+      - kudytudy-network
 
   # --- Redis 7 ----------------------------------------------------------------
   # Кэширование, PubSub для WebSocket-уведомлений, очереди задач (Streams).
@@ -75,7 +75,7 @@ services:
       retries: 5
       start_period: 10s
     networks:
-      - deepkrai-network
+      - kudytudy-network
 
   # --- Qdrant ------------------------------------------------------------------
   # Векторная БД для хранения vibe-эмбеддингов пользователей и локаций.
@@ -96,7 +96,7 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - deepkrai-network
+      - kudytudy-network
 
   # --- Neo4j 5 -----------------------------------------------------------------
   # Графовая БД для хранения графа маршрутов, связей пользователь-локация,
@@ -125,7 +125,7 @@ services:
       retries: 5
       start_period: 60s
     networks:
-      - deepkrai-network
+      - kudytudy-network
 
   # --- ClickHouse --------------------------------------------------------------
   # Колоночная аналитическая БД для телеметрии, тепловых карт,
@@ -156,7 +156,7 @@ services:
       retries: 5
       start_period: 30s
     networks:
-      - deepkrai-network
+      - kudytudy-network
 
   # --- MinIO (S3-совместимое объектное хранилище) ------------------------------
   # Хранение .splat файлов (3D-сцены), аудиофайлов, видео от фермеров,
@@ -181,7 +181,7 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - deepkrai-network
+      - kudytudy-network
 
   # --- Vosk STT (Speech-to-Text) -----------------------------------------------
   # Локальный бесплатный сервис распознавания речи. Русская модель (kaldi-ru).
@@ -199,7 +199,7 @@ services:
       retries: 3
       start_period: 30s
     networks:
-      - deepkrai-network
+      - kudytudy-network
 
   # --- Local Embeddings Server (miniLM) ----------------------------------------
   # Локальный легковесный генератор векторов для Qdrant (совместим с OpenAI API)
@@ -210,7 +210,7 @@ services:
     ports:
       - "${EMBEDDINGS_PORT:-7997}:7997"
     networks:
-      - deepkrai-network
+      - kudytudy-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:7997/docs"]
@@ -234,5 +234,5 @@ volumes:
 # --- Сеть ---------------------------------------------------------------------
 # Общая bridge-сеть для взаимодействия сервисов между собой.
 networks:
-  deepkrai-network:
+  kudytudy-network:
     driver: bridge

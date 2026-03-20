@@ -5,7 +5,7 @@ package ai
 
 // VibeAxes — структура осей vibe-профиля пользователя.
 // Извлекается из речи через LLM и описывает предпочтения туриста.
-// Оси соответствуют GDD (deep_krai_gdd.md, раздел Voice-to-Vibe).
+// Оси соответствуют GDD (kudytudy_gdd.md, раздел Voice-to-Vibe).
 type VibeAxes struct {
 	// StressLevel — уровень стресса (0.0 = спокоен, 1.0 = очень устал/напряжён).
 	StressLevel float64 `json:"stress_level"`

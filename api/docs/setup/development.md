@@ -76,5 +76,5 @@ go test ./... -cover
 
 ```bash
 cd api
-go build -o ./bin/deep-krai-api ./cmd/api
+go build -o ./bin/kudytudy-api ./cmd/api
 ```
