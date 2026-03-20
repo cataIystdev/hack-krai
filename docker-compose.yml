@@ -10,6 +10,27 @@
 # ==============================================================================
 
 services:
+  # --- Go API ------------------------------------------------------------------
+  # Сервер бизнес-логики Deep Krai
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:8080"
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+      - redis
+      - minio
+      - neo4j
+      - clickhouse
+      - qdrant
+    networks:
+      - deepkrai-network
+
   # --- PostgreSQL 16 + PostGIS ------------------------------------------------
   # Основная реляционная БД для пользователей, локаций, бронирований.
   # Образ postgis/postgis включает расширение PostGIS для пространственных

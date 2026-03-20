@@ -57,23 +57,8 @@ jobs:
               echo "⚠️ WARNING: Environment file $CONFIG_DIR/.env.$ENV_NAME not found."
             fi
 
-            # 5. Restart Infrastructure services (Databases, Vosk, Qdrant)
+            # 5. Restart Infrastructure services + API
             # Using specific project name to avoid container collision
             docker compose --project-name deepkrai-$ENV_NAME up -d --build
 
-            # 6. Build the Go API 
-            echo "🔨 Building Go API..."
-            cd api
-            # Make sure go is available on the target environment or use a specific path
-            export PATH=$PATH:/usr/local/go/bin
-            export CGO_ENABLED=0 GOOS=linux GOARCH=amd64
-            # Attempt to build, if go command not found, warn
-            if command -v go &> /dev/null; then
-              go build -o api_bin cmd/api/main.go
-              echo "✅ Go API built successfully."
-              # 7. Restart the systemd service for the API
-              systemctl restart deepkrai-api@$ENV_NAME || echo "⚠️ Service restart failed. Service might not be configured yet."
-            else
-              echo "❌ Go is not installed on the server or not in PATH. Skipping Go API build."
-            fi
             echo "🎉 Deployment of $ENV_NAME complete."
