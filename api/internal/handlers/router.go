@@ -108,7 +108,7 @@ func SetupRoutes(
 	locationsProtected.Put("/:id", locationHandler.Update)
 	locationsProtected.Delete("/:id", locationHandler.Delete)
 
-	// Поездки — защищённые эндпоинты (создание, детали, invite, участники).
+	// Поездки — защищённые эндпоинты (создание, детали, invite, участники, маршрут).
 	tripsProtected := v1.Group("/trips", jwtMiddleware)
 	tripsProtected.Get("/", tripHandler.ListTrips)
 	tripsProtected.Post("/", tripHandler.Create)
@@ -117,10 +117,13 @@ func SetupRoutes(
 	tripsProtected.Post("/:id/invite", tripHandler.GenerateInvite)
 	tripsProtected.Get("/:id/members", tripHandler.ListMembers)
 
-	// Маршруты — защищённый эндпоинт (построение маршрута).
+	// Маршруты — защищённые эндпоинты (ручной и trip-aware режимы).
 	if routeService != nil {
 		routeHandler := NewRouteHandler(routeService, logger)
 		routeGroup := v1.Group("/route", jwtMiddleware)
 		routeGroup.Post("/build", routeHandler.BuildRoute)
+
+		// Trip-aware построение маршрута.
+		tripsProtected.Post("/:id/build-route", routeHandler.BuildTripRoute)
 	}
 }

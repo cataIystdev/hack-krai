@@ -917,8 +917,8 @@ func OpenAPISpec(baseURL string) map[string]any {
 			"/api/v1/route/build": map[string]any{
 				"post": map[string]any{
 					"tags":        []string{"Маршруты"},
-					"summary":     "Построение маршрута",
-					"description": "Строит маршрут через указанные локации с расчётом расстояния (Haversine) и предполагаемого времени в пути.\n\nDemo-режим: используются прямые расстояния и настраиваемые скорости по типу транспорта. Полная маршрутизация через Neo4j запланирована в будущих фазах.",
+					"summary":     "Построение маршрута (ручной)",
+					"description": "Строит маршрут через указанные локации с расчётом расстояния (Haversine) и предполагаемого времени в пути.\n\nDemo-режим: используются прямые расстояния и настраиваемые скорости по типу транспорта.",
 					"operationId": "buildRoute",
 					"security":    []map[string]any{{"BearerAuth": []string{}}},
 					"requestBody": map[string]any{
@@ -930,7 +930,7 @@ func OpenAPISpec(baseURL string) map[string]any {
 						},
 					},
 					"responses": map[string]any{
-						"200": map[string]any{
+						"201": map[string]any{
 							"description": "Маршрут построен.",
 							"content": map[string]any{
 								"application/json": map[string]any{
@@ -945,6 +945,50 @@ func OpenAPISpec(baseURL string) map[string]any {
 							},
 						},
 						"400": map[string]any{"description": "Менее 2 location_ids или невалидные UUID."},
+						"401": map[string]any{"description": "Отсутствует или невалидный токен."},
+					},
+				},
+			},
+			"/api/v1/trips/{id}/build-route": map[string]any{
+				"post": map[string]any{
+					"tags":        []string{"Маршруты", "Поездки"},
+					"summary":     "Построение trip-aware маршрута",
+					"description": "Строит маршрут с учётом параметров поездки: бюджет, даты, транспорт, состав группы, формат, vibe-профили участников.\n\nЕсли location_ids не указаны — локации подбираются автоматически на основе vibe-скоринга и фильтров поездки.\n\nМаршрут сохраняется в таблице routes и route_points.",
+					"operationId": "buildTripRoute",
+					"security":    []map[string]any{{"BearerAuth": []string{}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "id",
+							"in":          "path",
+							"required":    true,
+							"description": "UUID поездки.",
+							"schema":      map[string]any{"type": "string", "format": "uuid"},
+						},
+					},
+					"requestBody": map[string]any{
+						"required": false,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/BuildTripRouteRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"201": map[string]any{
+							"description": "Trip-aware маршрут построен и сохранён.",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{
+										"type": "object",
+										"properties": map[string]any{
+											"success": map[string]any{"type": "boolean"},
+											"data":    map[string]any{"$ref": "#/components/schemas/RoutePreview"},
+										},
+									},
+								},
+							},
+						},
+						"400": map[string]any{"description": "Невалидный запрос или недостаточно локаций."},
 						"401": map[string]any{"description": "Отсутствует или невалидный токен."},
 					},
 				},
@@ -1430,27 +1474,52 @@ func OpenAPISpec(baseURL string) map[string]any {
 					},
 					"required": []string{"location_ids"},
 				},
+				"BuildTripRouteRequest": map[string]any{
+					"type":        "object",
+					"description": "Запрос на построение trip-aware маршрута. Все поля опциональны.",
+					"properties": map[string]any{
+						"location_ids": map[string]any{"type": "array", "items": map[string]any{"type": "string", "format": "uuid"}, "description": "UUID локаций (опционально; если пуст — автоподбор)."},
+						"max_points":   map[string]any{"type": "integer", "description": "Максимум точек (0 = по формату).", "default": 0},
+						"optimize":     map[string]any{"type": "boolean", "default": false, "description": "Оптимизировать порядок точек."},
+					},
+				},
 				"RoutePreview": map[string]any{
 					"type":        "object",
-					"description": "Предварительный просмотр маршрута.",
+					"description": "Полный ответ построенного маршрута с расчётами.",
 					"properties": map[string]any{
-						"points":            map[string]any{"type": "array", "items": map[string]any{"$ref": "#/components/schemas/RoutePoint"}, "description": "Точки маршрута в порядке следования."},
-						"total_distance_km": map[string]any{"type": "number", "description": "Общая дистанция маршрута в км."},
-						"total_time_min":    map[string]any{"type": "number", "description": "Общее время в пути в минутах."},
-						"transport":         map[string]any{"type": "string", "description": "Тип транспорта."},
+						"id":                 map[string]any{"type": "string", "format": "uuid", "description": "UUID маршрута (заполняется после сохранения в БД)."},
+						"trip_id":            map[string]any{"type": "string", "format": "uuid", "description": "UUID поездки."},
+						"name":               map[string]any{"type": "string", "description": "Название маршрута."},
+						"status":             map[string]any{"type": "string", "enum": []string{"draft", "active", "completed"}, "description": "Статус маршрута."},
+						"points":             map[string]any{"type": "array", "items": map[string]any{"$ref": "#/components/schemas/RoutePoint"}, "description": "Точки маршрута в порядке следования."},
+						"total_distance_km": map[string]any{"type": "number", "description": "Общая дистанция в км."},
+						"total_duration_min": map[string]any{"type": "integer", "description": "Общее время (включая пребывание) в минутах."},
+						"transport":          map[string]any{"type": "string", "description": "Тип транспорта."},
+						"points_count":       map[string]any{"type": "integer", "description": "Количество точек."},
+						"estimated_cost_rub": map[string]any{"type": "integer", "description": "Расчётная стоимость в рублях."},
+						"summary":            map[string]any{"type": "string", "description": "Текстовое описание маршрута."},
+						"days_count":         map[string]any{"type": "integer", "description": "Количество дней."},
+						"created_at":         map[string]any{"type": "string", "format": "date-time", "description": "Время создания."},
 					},
 				},
 				"RoutePoint": map[string]any{
 					"type":        "object",
-					"description": "Точка маршрута.",
+					"description": "Точка маршрута с расчётными данными и метаданными.",
 					"properties": map[string]any{
-						"location_id":     map[string]any{"type": "string", "format": "uuid"},
-						"name":            map[string]any{"type": "string"},
-						"latitude":        map[string]any{"type": "number"},
-						"longitude":       map[string]any{"type": "number"},
-						"order":           map[string]any{"type": "integer", "description": "Порядковый номер в маршруте."},
-						"distance_km":     map[string]any{"type": "number", "description": "Расстояние до следующей точки в км."},
-						"travel_time_min": map[string]any{"type": "number", "description": "Время до следующей точки в минутах."},
+						"location_id":           map[string]any{"type": "string", "format": "uuid"},
+						"name":                  map[string]any{"type": "string"},
+						"latitude":              map[string]any{"type": "number"},
+						"longitude":             map[string]any{"type": "number"},
+						"category":              map[string]any{"type": "string", "description": "Категория локации."},
+						"preview_image_url":     map[string]any{"type": "string", "description": "URL hero-изображения."},
+						"order":                 map[string]any{"type": "integer", "description": "Порядковый номер."},
+						"distance_from_prev_km": map[string]any{"type": "number", "description": "Расстояние от предыдущей точки в км."},
+						"duration_from_prev_min": map[string]any{"type": "integer", "description": "Время от предыдущей точки в минутах."},
+						"stay_duration_min":     map[string]any{"type": "integer", "description": "Рекомендуемое время пребывания в минутах."},
+						"day_number":            map[string]any{"type": "integer", "description": "Номер дня поездки."},
+						"time_slot":             map[string]any{"type": "string", "enum": []string{"morning", "afternoon", "evening"}, "description": "Тайм-слот."},
+						"target_audience":       map[string]any{"type": "string", "enum": []string{"all", "adults", "children"}, "description": "Целевая аудитория."},
+						"vibe_score":            map[string]any{"type": "number", "format": "float", "description": "Vibe-score (0.0-1.0)."},
 					},
 				},
 			},

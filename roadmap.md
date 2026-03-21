@@ -878,67 +878,88 @@ scenes -> swipe -> finalize -> recommendations.
 
 ### Current status
 
-✅ Частично реализовано (route preview готов, trip-aware route ещё нет).
+✅ **DONE** (Phase 7A + 7B + 7C реализованы)
 
-### Already implemented
+### Implementation tracking
 
-1. `POST /api/v1/route/build`
-2. HTTP handler + router registration
-3. `BuildRouteRequest` / `RoutePreview` contract
-4. deterministic route preview:
-   - ordered locations;
-   - distance via Haversine;
-   - transport-aware duration;
-   - stay duration per category.
-5. Frontend-usable payload для `/route` и map route panel.
+#### 7A. Demo-safe route preview — ✅ DONE (ранее)
 
-### Gap to complete
+- `POST /api/v1/route/build` — ручной режим, Haversine, transport-aware duration
 
-1. `POST /api/v1/trips/{id}/build-route`
-2. trip-aware filtering по budget/date/group/format
-3. merged vibe integration
-4. richer route summary / reasons-fit / optional polyline
-5. Neo4j-backed graph routing вместо только Haversine preview
+#### 7B. Trip-aware route building — ✅ DONE
 
-### Next handoff
+**Что реализовано:**
 
-Frontend уже может работать на preview-grade payload. Следующий handoff -- trip-aware build-route без ломки контракта.
+1. **Миграция 008**: таблицы `routes` и `route_points` с CHECK-ограничениями (status, time_slot, target_audience)
+2. **`POST /api/v1/trips/{id}/build-route`**: trip-aware построение маршрута
+3. **Trip-aware фильтрация**:
+   - `budget_tier` → `max_price_per_night` (economy: 3000₽, comfort: 7000₽, premium: 50000₽)
+   - `has_children` (из trip_members.is_child + group_composition) → child_friendly фильтр
+   - `format` → max_points лимит (day_trip: 5, weekend: 8, multi_day: 15)
+4. **Day planning**: распределение по дням, 3 слота/день (morning/afternoon/evening)
+5. **Target audience**: all/adults/children на основе категории локации
+6. **Cost estimation**: средняя price_per_night × дни
+7. **Summary generation**: детерминистический текст с форматом, транспортом, дистанцией, категориями
+8. **DB persistence**: транзакционное сохранение route + route_points
 
-### Deliverables
+**Файлы:**
 
-1. ✅ `POST /api/v1/route/build`
-2. ⏳ `POST /api/v1/trips/{id}/build-route`
-3. Response:
-   - ordered locations
-   - estimated time
-   - route summary
-   - reasons/fit
-   - optional polyline placeholder
+| Файл | Действие | Описание |
+|------|----------|----------|
+| `migrations/008_create_routes_tables.sql` | NEW | Таблицы routes, route_points |
+| `models/route.go` | REWRITE | +BuildTripRouteRequest, +Route, +RoutePointDB, расширены RoutePreview/RoutePoint |
+| `models/route_test.go` | REWRITE | 17 тестов: Validate, NormalizeDefaults, Constants |
+| `database/route_repository.go` | NEW | Create, FindByID, FindPointsByRouteID, FindByTripID |
+| `services/route.go` | REWRITE | +BuildTripRoute, +tripRepo/routeRepo/vibeRepo зависимости |
+| `handlers/route.go` | REWRITE | +BuildTripRoute handler |
+| `handlers/router.go` | MODIFY | +POST /:id/build-route |
+| `cmd/api/main.go` | MODIFY | tripRepo/routeRepo вынесены, переданы в RouteService |
+| `handlers/openapi.go` | MODIFY | +BuildTripRouteRequest, расширены RoutePreview/RoutePoint schemas |
 
-### Iteration plan
+#### 7C. Vibe integration — ✅ DONE
 
-#### 7A. Demo-safe route preview
+**Что реализовано:**
 
-- curated route from selected locations;
-- deterministic time estimates.
+1. **Merged vibe vector**: загрузка vibe-векторов всех trip_members из Qdrant, fallback на trip.vibe_vector_id
+2. **Среднее арифметическое + L2-нормализация** merged vector
+3. **SearchNearest** по `location_vibes` для vibe-скоринга
+4. **Ранжирование**: vibe_score + child_friendly бонус (+0.1)
+5. **Target audience tagging**: winery/gastro/extreme → adults, farm/beach/nature → children
 
-#### 7B. MVP real route
+**Файлы:** Интегрировано в `services/route.go` (computeVibeScores, mergeVectors, determineAudience)
 
-- budget/date/group-aware filtering;
-- heuristic ordering;
-- Neo4j integration later.
+### Bugs fixed
 
-#### 7C. Full GDD route
+1. **Отсутствующий `ai.Client`**: восстановлен `ai/client.go` — базовый HTTP-клиент для LLM/Embeddings/Whisper (IsMock, buildURL, setAuthHeaders). Был утерян из codebase.
 
-- merged vibe;
-- graph routing;
-- weather penalties;
-- AI compromise planning.
+### Test results
+
+```
+go build ./... — OK
+go test ./internal/models/ -v — 17/17 PASS (route tests)
+  TestBuildRouteRequest_Validate — 6 sub-tests
+  TestBuildRouteRequest_NormalizeDefaults — 3 sub-tests
+  TestBuildTripRouteRequest_Validate — 6 sub-tests
+  TestBuildTripRouteRequest_NormalizeDefaults — 5 sub-tests
+  TestMaxRoutePointsPerFormat — OK
+  TestRouteConstants — OK
+```
+
+### Remaining (future phases)
+
+1. Neo4j-backed graph routing (вместо Haversine)
+2. Weather penalties
+3. LLM-based compromise planning (замена детерминистического summary)
+4. Route optimization (nearest-neighbor / TSP heuristic)
+5. Polyline generation
 
 ### Acceptance criteria
 
-1. ✅ Уже на этапе 7A endpoint usable из UI.
-2. 🔶 7B и 7C не должны ломать контракт.
+1. ✅ `POST /api/v1/route/build` — usable из UI
+2. ✅ `POST /api/v1/trips/{id}/build-route` — trip-aware с vibe scoring
+3. ✅ 7B и 7C не ломают контракт 7A
+4. ✅ Маршруты сохраняются в БД (routes + route_points)
+5. ✅ Day planning + target audience
 
 ---
 

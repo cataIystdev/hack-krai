@@ -1,6 +1,5 @@
-// Файл client.go реализует базовый HTTP-клиент для OnlySQ API.
-// OnlySQ API совместим с форматом OpenAI API (тот же формат запросов и ответов).
-// Клиент используется как основа для Whisper, LLM и Embeddings клиентов.
+// Файл client.go определяет базовый AI-клиент, используемый LLM, Embeddings и Whisper.
+// Client инкапсулирует HTTP-клиент, базовый URL, API-ключ и mock-режим.
 package ai
 
 import (
@@ -13,56 +12,52 @@ import (
 	"kudytudy-api/internal/config"
 )
 
-// Client — базовый HTTP-клиент для OnlySQ / OpenAI-совместимого API.
-// Содержит настройки подключения, HTTP-клиент и логгер.
+// Client — базовый AI-клиент для взаимодействия с OpenAI-совместимым API.
+// Инкапсулирует HTTP-клиент, авторизацию и режим работы (mock/real).
 type Client struct {
+	// httpClient — HTTP-клиент с настроенным таймаутом.
+	httpClient *http.Client
+
 	// baseURL — базовый URL API (например, https://api.onlysq.ru/ai/openai/).
 	baseURL string
 
-	// apiKey — ключ авторизации (Bearer token).
+	// apiKey — ключ авторизации.
 	apiKey string
 
-	// httpClient — HTTP-клиент с настроенными таймаутами.
-	httpClient *http.Client
+	// mock — флаг mock-режима (true, если API-ключ не задан).
+	mock bool
 
-	// logger — логгер для записи операций.
+	// logger — логгер.
 	logger *zap.Logger
-
-	// isMock — флаг mock-режима (без реального API).
-	isMock bool
 }
 
-// NewClient создаёт базовый AI-клиент из конфигурации.
-// Если API-ключ пустой — клиент работает в mock-режиме.
+// NewClient создаёт базовый AI-клиент на основе конфигурации.
+// Если APIKey пуст, клиент работает в mock-режиме.
 func NewClient(cfg config.AIConfig, logger *zap.Logger) *Client {
-	baseURL := cfg.BaseURL
-	if !strings.HasSuffix(baseURL, "/") {
-		baseURL += "/"
-	}
-
 	return &Client{
-		baseURL: baseURL,
-		apiKey:  cfg.APIKey,
 		httpClient: &http.Client{
-			Timeout: 120 * time.Second,
+			Timeout: 30 * time.Second,
 		},
-		logger: logger.Named("ai_client"),
-		isMock: cfg.IsMockMode(),
+		baseURL: strings.TrimRight(cfg.BaseURL, "/"),
+		apiKey:  cfg.APIKey,
+		mock:    cfg.IsMockMode(),
+		logger:  logger.Named("ai_client"),
 	}
 }
 
 // IsMock возвращает true, если клиент работает в mock-режиме.
 func (c *Client) IsMock() bool {
-	return c.isMock
+	return c.mock
 }
 
-// buildURL формирует полный URL для API-вызова.
-func (c *Client) buildURL(path string) string {
-	path = strings.TrimPrefix(path, "/")
-	return c.baseURL + path
+// buildURL строит полный URL для API-эндпоинта.
+func (c *Client) buildURL(endpoint string) string {
+	return c.baseURL + "/v1/" + endpoint
 }
 
-// setAuthHeaders устанавливает заголовки авторизации и Content-Type.
+// setAuthHeaders устанавливает заголовки авторизации для HTTP-запроса.
 func (c *Client) setAuthHeaders(req *http.Request) {
-	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	if c.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	}
 }

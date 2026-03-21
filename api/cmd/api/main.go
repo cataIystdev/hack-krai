@@ -109,16 +109,27 @@ func main() {
 		mapService = services.NewMapService(locationRepo, vibeRepo, logger)
 	}
 
-	// Сервис маршрутов (RouteService).
-	var routeService *services.RouteService
-	if locationRepo != nil {
-		routeService = services.NewRouteService(locationRepo, logger)
+	// Репозиторий поездок (используется в TripService и RouteService).
+	var tripRepo *database.TripRepository
+	if dbManager.Postgres != nil {
+		tripRepo = database.NewTripRepository(dbManager.Postgres, logger)
 	}
 
-	// Репозиторий и сервис поездок.
+	// Репозиторий маршрутов.
+	var routeRepo *database.RouteRepository
+	if dbManager.Postgres != nil {
+		routeRepo = database.NewRouteRepository(dbManager.Postgres, logger)
+	}
+
+	// Сервис маршрутов (RouteService). Принимает все зависимости для trip-aware режима.
+	var routeService *services.RouteService
+	if locationRepo != nil {
+		routeService = services.NewRouteService(locationRepo, tripRepo, routeRepo, vibeRepo, logger)
+	}
+
+	// Сервис поездок (TripService).
 	var tripService *services.TripService
-	if dbManager.Postgres != nil && userRepo != nil {
-		tripRepo := database.NewTripRepository(dbManager.Postgres, logger)
+	if tripRepo != nil && userRepo != nil {
 		tripService = services.NewTripService(tripRepo, userRepo, logger)
 	}
 
