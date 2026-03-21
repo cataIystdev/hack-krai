@@ -210,15 +210,60 @@ func (r *VibeRepository) GetVibeVector(ctx context.Context, collection string, p
 	point := resp.GetResult()[0]
 	vectors := point.GetVectors()
 	if vectors == nil {
+		r.logger.Warn("GetVibeVector: vectors is nil",
+			zap.String("collection", collection),
+			zap.String("point_id", idStr),
+		)
 		return nil, ErrVectorNotFound
 	}
 
+	// Путь 1: Unnamed vector (VectorsOutput_Vector) — наш основной формат.
+	if vecOpt, ok := vectors.GetVectorsOptions().(*pb.VectorsOutput_Vector); ok && vecOpt != nil {
+		data := vecOpt.Vector.GetData()
+		if len(data) > 0 {
+			r.logger.Debug("GetVibeVector: extracted unnamed vector",
+				zap.String("collection", collection),
+				zap.Int("dim", len(data)),
+			)
+			return data, nil
+		}
+	}
+
+	// Путь 2: Named vectors (VectorsOutput_Vectors) — fallback.
+	if namedOpt, ok := vectors.GetVectorsOptions().(*pb.VectorsOutput_Vectors); ok && namedOpt != nil {
+		for name, vec := range namedOpt.Vectors.GetVectors() {
+			data := vec.GetData()
+			if len(data) > 0 {
+				r.logger.Debug("GetVibeVector: extracted named vector",
+					zap.String("collection", collection),
+					zap.String("vector_name", name),
+					zap.Int("dim", len(data)),
+				)
+				return data, nil
+			}
+		}
+	}
+
+	// Путь 3: Прямой GetVector() — legacy fallback.
 	vec := vectors.GetVector()
-	if vec == nil {
-		return nil, ErrVectorNotFound
+	if vec != nil {
+		data := vec.GetData()
+		if len(data) > 0 {
+			r.logger.Debug("GetVibeVector: extracted via GetVector()",
+				zap.String("collection", collection),
+				zap.Int("dim", len(data)),
+			)
+			return data, nil
+		}
 	}
 
-	return vec.GetData(), nil
+	// Если ни один путь не дал вектор — логируем для диагностики.
+	r.logger.Error("GetVibeVector: не удалось извлечь вектор, все пути пусты",
+		zap.String("collection", collection),
+		zap.String("point_id", idStr),
+		zap.String("vectors_type", fmt.Sprintf("%T", vectors.GetVectorsOptions())),
+	)
+	return nil, ErrVectorNotFound
 }
 
 // SearchNearest ищет Top-N ближайших точек к заданному вектору в коллекции Qdrant.
