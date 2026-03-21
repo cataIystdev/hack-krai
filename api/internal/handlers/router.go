@@ -69,6 +69,7 @@ func SetupRoutes(
 	locationHandler := NewLocationHandler(locationService, logger)
 	v1.Get("/locations", locationHandler.List)
 	v1.Get("/locations/:id", locationHandler.GetByID)
+	v1.Get("/locations/:id/splat", locationHandler.GetSplat)
 
 	// Карта — публичный эндпоинт (точки для маркеров).
 	if mapService != nil {

@@ -461,7 +461,7 @@ func OpenAPISpec(baseURL string) map[string]any {
 				"get": map[string]any{
 					"tags":        []string{"Локации"},
 					"summary":     "Получение локации по ID",
-					"description": "Возвращает полные данные локации по UUID. Публичный эндпоинт, не требует авторизации.",
+					"description": "Возвращает полные данные локации по UUID. Публичный эндпоинт, не требует авторизации.\n\nОтвет содержит все поля для экрана детали локации: title, category, описания, теги, цена, координаты, hero image, галерея, 3D preview ссылка.",
 					"operationId": "getLocationByID",
 					"parameters": []map[string]any{
 						{"name": "id", "in": "path", "required": true, "schema": map[string]any{"type": "string", "format": "uuid"}, "description": "UUID локации."},
@@ -521,6 +521,34 @@ func OpenAPISpec(baseURL string) map[string]any {
 						"200": map[string]any{"description": "Локация удалена."},
 						"401": map[string]any{"description": "Отсутствует или невалидный токен."},
 						"403": map[string]any{"description": "Нет прав на удаление этой локации (не владелец)."},
+						"404": map[string]any{"description": "Локация не найдена."},
+					},
+				},
+			},
+			"/api/v1/locations/{id}/splat": map[string]any{
+				"get": map[string]any{
+					"tags":        []string{"Локации"},
+					"summary":     "3D-сцена локации (Gaussian Splatting)",
+					"description": "Возвращает URL 3D-сцены (.splat) для конкретной локации. Отдельный эндпоинт позволяет фронтенду загружать тяжёлый 3D-контент лениво, не включая его в основной payload location detail.",
+					"operationId": "getLocationSplat",
+					"parameters": []map[string]any{
+						{"name": "id", "in": "path", "required": true, "schema": map[string]any{"type": "string", "format": "uuid"}, "description": "UUID локации."},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Данные 3D-сцены.",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{
+										"type": "object",
+										"properties": map[string]any{
+											"success": map[string]any{"type": "boolean"},
+											"data":    map[string]any{"$ref": "#/components/schemas/SplatResponse"},
+										},
+									},
+								},
+							},
+						},
 						"404": map[string]any{"description": "Локация не найдена."},
 					},
 				},
@@ -1039,6 +1067,8 @@ func OpenAPISpec(baseURL string) map[string]any {
 						"density_level":     map[string]any{"type": "string", "enum": []string{"red", "yellow", "green"}, "description": "Плотность туристов. red — высокая, yellow — сезонная, green — Hidden Gem."},
 						"child_friendly":    map[string]any{"type": "boolean", "description": "Подходит ли для детей."},
 						"splat_url":         map[string]any{"type": "string", "nullable": true, "description": "URL на .splat файл (3D Gaussian Splatting)."},
+						"preview_image_url": map[string]any{"type": "string", "description": "URL hero-изображения локации."},
+						"gallery_urls":      map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Массив URL дополнительных фотографий для галереи."},
 						"vibe_vector_id":    map[string]any{"type": "string", "format": "uuid", "nullable": true, "description": "ID вектора vibe-профиля в Qdrant."},
 						"address":           map[string]any{"type": "string", "description": "Адрес (населённый пункт, район).", "example": "Краснодарский край, пос. Абрау-Дюрсо"},
 						"is_published":      map[string]any{"type": "boolean", "description": "Опубликована ли локация."},
@@ -1046,6 +1076,16 @@ func OpenAPISpec(baseURL string) map[string]any {
 						"longitude":         map[string]any{"type": "number", "format": "double", "description": "Долгота (WGS 84).", "example": 37.5949},
 						"created_at":        map[string]any{"type": "string", "format": "date-time"},
 						"updated_at":        map[string]any{"type": "string", "format": "date-time"},
+					},
+				},
+				"SplatResponse": map[string]any{
+					"type":        "object",
+					"description": "Ответ с данными 3D-сцены (Gaussian Splatting) для локации.",
+					"properties": map[string]any{
+						"location_id":   map[string]any{"type": "string", "format": "uuid", "description": "UUID локации."},
+						"location_name": map[string]any{"type": "string", "description": "Название локации."},
+						"has_splat":     map[string]any{"type": "boolean", "description": "Есть ли 3D-сцена."},
+						"splat_url":     map[string]any{"type": "string", "nullable": true, "description": "URL на .splat файл. Присутствует только если has_splat=true."},
 					},
 				},
 				"CreateLocationRequest": map[string]any{

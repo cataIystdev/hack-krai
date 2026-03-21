@@ -30,7 +30,8 @@ var ErrLocationForbidden = errors.New("нет прав на изменение �
 const locationColumns = `
 	id, owner_id, slug, name, description_short, description_full,
 	category, tags, price_per_night, capacity, access_level, density_level,
-	child_friendly, splat_url, preview_image_url, vibe_vector_id, address, is_published,
+	child_friendly, splat_url, preview_image_url, gallery_urls,
+	vibe_vector_id, address, is_published,
 	ST_X(geo) AS longitude, ST_Y(geo) AS latitude,
 	created_at, updated_at
 `
@@ -58,7 +59,8 @@ func scanLocation(row pgx.Row) (*models.Location, error) {
 		&loc.DescriptionShort, &loc.DescriptionFull,
 		&loc.Category, &loc.Tags, &loc.PricePerNight, &loc.Capacity,
 		&loc.AccessLevel, &loc.DensityLevel, &loc.ChildFriendly,
-		&loc.SplatURL, &loc.PreviewImageURL, &loc.VibeVectorID, &loc.Address, &loc.IsPublished,
+		&loc.SplatURL, &loc.PreviewImageURL, &loc.GalleryURLs,
+		&loc.VibeVectorID, &loc.Address, &loc.IsPublished,
 		&loc.Longitude, &loc.Latitude,
 		&loc.CreatedAt, &loc.UpdatedAt,
 	)
@@ -385,7 +387,8 @@ func (r *LocationRepository) Search(ctx context.Context, filter *models.Location
 			&loc.DescriptionShort, &loc.DescriptionFull,
 			&loc.Category, &loc.Tags, &loc.PricePerNight, &loc.Capacity,
 			&loc.AccessLevel, &loc.DensityLevel, &loc.ChildFriendly,
-			&loc.SplatURL, &loc.PreviewImageURL, &loc.VibeVectorID, &loc.Address, &loc.IsPublished,
+			&loc.SplatURL, &loc.PreviewImageURL, &loc.GalleryURLs,
+			&loc.VibeVectorID, &loc.Address, &loc.IsPublished,
 			&loc.Longitude, &loc.Latitude,
 			&loc.CreatedAt, &loc.UpdatedAt,
 		)
@@ -514,7 +517,8 @@ func (r *LocationRepository) FindByIDs(ctx context.Context, ids []string) ([]mod
 			&loc.DescriptionShort, &loc.DescriptionFull,
 			&loc.Category, &loc.Tags, &loc.PricePerNight, &loc.Capacity,
 			&loc.AccessLevel, &loc.DensityLevel, &loc.ChildFriendly,
-			&loc.SplatURL, &loc.PreviewImageURL, &loc.VibeVectorID, &loc.Address, &loc.IsPublished,
+			&loc.SplatURL, &loc.PreviewImageURL, &loc.GalleryURLs,
+			&loc.VibeVectorID, &loc.Address, &loc.IsPublished,
 			&loc.Longitude, &loc.Latitude,
 			&loc.CreatedAt, &loc.UpdatedAt,
 		)

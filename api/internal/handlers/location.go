@@ -102,7 +102,51 @@ func (h *LocationHandler) GetByID(c fiber.Ctx) error {
 	})
 }
 
-// Update обрабатывает PUT /api/v1/locations/:id.
+// GetSplat обрабатывает GET /api/v1/locations/:id/splat.
+// Возвращает URL 3D-сцены (.splat Gaussian Splatting) для конкретной локации.
+// Отдельный эндпоинт позволяет фронтенду загружать тяжёлый 3D-контент лениво,
+// не включая его в основной payload location detail.
+func (h *LocationHandler) GetSplat(c fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"success": false,
+			"message": "id обязателен",
+		})
+	}
+
+	location, err := h.service.GetByID(c.Context(), id)
+	if err != nil {
+		if err == database.ErrLocationNotFound {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"success": false,
+				"message": "локация не найдена",
+			})
+		}
+		h.logger.Error("ошибка получения splat-данных", zap.String("id", id), zap.Error(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"success": false,
+			"message": "внутренняя ошибка сервера",
+		})
+	}
+
+	// Формирование ответа с данными 3D-сцены.
+	splatData := fiber.Map{
+		"location_id":   location.ID,
+		"location_name": location.Name,
+		"has_splat":     location.SplatURL != nil && *location.SplatURL != "",
+	}
+
+	if location.SplatURL != nil && *location.SplatURL != "" {
+		splatData["splat_url"] = *location.SplatURL
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"success": true,
+		"data":    splatData,
+	})
+}
+
 // Обновляет локацию. Доступно только владельцу (owner_id).
 func (h *LocationHandler) Update(c fiber.Ctx) error {
 	id := c.Params("id")

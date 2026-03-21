@@ -90,6 +90,9 @@ type Location struct {
 	// PreviewImageURL — URL hero-изображения локации для карточек и карты.
 	PreviewImageURL string `json:"preview_image_url" db:"preview_image_url"`
 
+	// GalleryURLs — массив URL дополнительных фотографий для экрана детали локации.
+	GalleryURLs []string `json:"gallery_urls" db:"gallery_urls"`
+
 	// VibeVectorID — ID вектора vibe-профиля в Qdrant.
 	VibeVectorID *uuid.UUID `json:"vibe_vector_id,omitempty" db:"vibe_vector_id"`
 
