@@ -127,10 +127,10 @@ func main() {
 		routeService = services.NewRouteService(locationRepo, tripRepo, routeRepo, vibeRepo, logger)
 	}
 
-	// Сервис поездок (TripService).
+	// Сервис поездок (TripService). Принимает vibeRepo для MergeGroupVibes.
 	var tripService *services.TripService
 	if tripRepo != nil && userRepo != nil {
-		tripService = services.NewTripService(tripRepo, userRepo, logger)
+		tripService = services.NewTripService(tripRepo, userRepo, vibeRepo, logger)
 	}
 
 	// --- 4.5 Инициализация AI-клиентов и vibe-сервиса ---

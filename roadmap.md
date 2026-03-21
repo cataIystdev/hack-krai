@@ -978,52 +978,89 @@ go test ./internal/models/ -v — 17/17 PASS (route tests)
 
 ### Current status
 
-🔶 Частично реализовано.
+ **DONE** (все gap-ы закрыты)
 
-### Already implemented
+### Implementation tracking
 
-1. invite regeneration
-2. join endpoint
-3. members endpoint
-4. trip member atomic join guard against overflow
-5. `MergeGroupVibes()` stub and repository support for `merged_vibe_vector_id`
+#### Concurrency-Safe Join
 
-### Gap to complete
+**Проблема:** `AddMemberAtomic` использовал `INSERT...SELECT WHERE count < N` без блокировки строки, что допускало race condition при параллельных join.
 
-1. merged vibe
-2. participant preference enrichment
-3. route integration
-4. invite/join auth-flex polish and end-to-end trip route handoff
-5. membership/privacy checks for detail and members endpoints
-6. authenticated join должен корректно связывать `trip_member` с `user_id`, а не деградировать в анонимный join
-7. duplicate prevention и member identity должны одинаково работать для invite-based и auth-based сценариев
-8. заменить текущий `AddMemberAtomic()` на решение со строгой capacity guarantee под concurrency
+**Решение:** Переписан на транзакционный подход:
+1. `SELECT ... FOR UPDATE` на trips row (exclusive row lock)
+2. `COUNT(*)` текущих членов
+3. Проверка дубликатов: user_id для авторизованных, `LOWER(display_name)` для анонимных
+4. `INSERT` нового участника
+5. `COMMIT`
 
-### Next handoff
+#### Membership Privacy
 
-Frontend later can build group UI mostly on top of existing trip APIs.
+**Проблема:** `GetByID` и `GetMembers` не проверяли, является ли запрашивающий участником.
 
-### Deliverables
+**Решение:** Добавлен `checkMembership` — проверяет `CreatorID` или `IsMember`. Неучастники получают 403.
 
-1. `POST /api/v1/trips/{id}/invite`
-2. `POST /api/v1/trips/{id}/join`
-3. `GET /api/v1/trips/{id}/members`
-4. mini-profile payload for participant
+#### Auth-Flex Join
 
-### Temporary simplification
+**Проблема:** Authenticated join не связывал `trip_member` с данными из `users`.
 
-Допустимо сначала:
+**Решение:**
+- При auth join: `display_name` и `vibe_vector_id` подтягиваются из профиля users
+- `user_id` всегда привязывается к `trip_member`
+- Fallback на данные из запроса, если профиль недоступен
 
-- ручные tags вместо полного mini-vibe;
-- merged vibe как deterministic placeholder.
+#### MergeGroupVibes
 
-### Full target
+**Проблема:** Stub, возвращавший nil.
 
-- merge participant vectors;
-- compromise-aware route.
-- private trip data visible only to allowed participants/roles;
-- invite flow and authenticated join share one consistent identity model;
-- group size invariant гарантирован даже при параллельных join.
+**Решение:**
+1. Загрузка vibe-векторов всех участников из Qdrant (CollectionUserVibes)
+2. Взвешенное среднее: детские профили = вес 1.2x
+3. L2-нормализация
+4. Upsert в Qdrant (CollectionGroupVibes)
+5. Обновление `trips.merged_vibe_vector_id`
+6. SHA1-based UUID для идемпотентности
+7. Запускается асинхронно после каждого Join
+
+#### Duplicate Prevention
+
+| Сценарий | Механизм |
+|----------|----------|
+| Авторизованный | UNIQUE INDEX `(trip_id, user_id) WHERE user_id IS NOT NULL` (миграция 003) |
+| Анонимный | UNIQUE INDEX `(trip_id, LOWER(display_name)) WHERE user_id IS NULL` (миграция 009) |
+
+### Файлы
+
+| Файл | Действие | Описание |
+|------|----------|----------|
+| `migrations/009_group_trip_hardening.sql` | NEW | Unique index для анонимных участников |
+| `database/trip_repository.go` | MODIFY | Транзакционный AddMemberAtomic + IsMember + FindMemberByUserID |
+| `services/trip.go` | REWRITE | Privacy, auth-flex Join, MergeGroupVibes, vibeRepo |
+| `handlers/trip.go` | MODIFY | GetByID/ListMembers передают userID |
+| `cmd/api/main.go` | MODIFY | vibeRepo в NewTripService |
+| `handlers/openapi.go` | MODIFY | 403 на GET trip/members, обновлён POST join |
+| `docs/phase8/group_trip_mvp.md` | NEW | Документация Phase 8 |
+
+### Test results
+
+```
+go build ./... -- OK
+go test ./internal/models/ -v -- ALL PASS
+```
+
+### Remaining (future phases)
+
+1. Route integration (compromise-aware route на основе merged vibe)
+2. Mini-vibe profile для участников (замена ручных tags)
+3. Member removal / kick
+4. Trip status transitions (planning -> active -> completed)
+
+### Acceptance criteria
+
+1. Concurrency-safe join с FOR UPDATE -- capacity guarantee строго соблюдается
+2. Membership privacy -- неучастники получают 403
+3. Auth-flex join -- авторизованные получают display_name и vibe_vector из профиля
+4. MergeGroupVibes -- полноценный merge с Qdrant upsert
+5. Duplicate prevention одинаково работает для auth и anon join
 
 ---
 

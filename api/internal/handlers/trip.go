@@ -125,8 +125,26 @@ func (h *TripHandler) ListTrips(c fiber.Ctx) error {
 
 // GetByID обрабатывает GET /api/v1/trips/:id.
 // Возвращает детали поездки со списком участников.
+// Доступ ограничен: только участники поездки или создатель.
 // Требует JWT-аутентификации.
 func (h *TripHandler) GetByID(c fiber.Ctx) error {
+	// Получение ID пользователя из JWT-контекста.
+	userIDStr, ok := c.Locals("user_id").(string)
+	if !ok || userIDStr == "" {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"success": false,
+			"message": "не удалось определить пользователя",
+		})
+	}
+
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"success": false,
+			"message": "некорректный идентификатор пользователя",
+		})
+	}
+
 	// Парсинг ID поездки из URL.
 	tripIDStr := c.Params("id")
 	tripID, err := uuid.Parse(tripIDStr)
@@ -137,8 +155,8 @@ func (h *TripHandler) GetByID(c fiber.Ctx) error {
 		})
 	}
 
-	// Получение поездки через сервис.
-	result, err := h.tripService.GetByID(c.Context(), tripID)
+	// Получение поездки через сервис (с проверкой membership).
+	result, err := h.tripService.GetByID(c.Context(), tripID, userID)
 	if err != nil {
 		return h.handleTripError(c, err)
 	}
@@ -252,8 +270,26 @@ func (h *TripHandler) Join(c fiber.Ctx) error {
 
 // ListMembers обрабатывает GET /api/v1/trips/:id/members.
 // Возвращает список участников поездки.
+// Доступ ограничен: только участники поездки или создатель.
 // Требует JWT-аутентификации.
 func (h *TripHandler) ListMembers(c fiber.Ctx) error {
+	// Получение ID пользователя из JWT-контекста.
+	userIDStr, ok := c.Locals("user_id").(string)
+	if !ok || userIDStr == "" {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"success": false,
+			"message": "не удалось определить пользователя",
+		})
+	}
+
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"success": false,
+			"message": "некорректный идентификатор пользователя",
+		})
+	}
+
 	// Парсинг ID поездки.
 	tripIDStr := c.Params("id")
 	tripID, err := uuid.Parse(tripIDStr)
@@ -264,8 +300,8 @@ func (h *TripHandler) ListMembers(c fiber.Ctx) error {
 		})
 	}
 
-	// Получение участников через сервис.
-	members, err := h.tripService.GetMembers(c.Context(), tripID)
+	// Получение участников через сервис (с проверкой membership).
+	members, err := h.tripService.GetMembers(c.Context(), tripID, userID)
 	if err != nil {
 		return h.handleTripError(c, err)
 	}

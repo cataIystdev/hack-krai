@@ -412,20 +412,90 @@ func (r *TripRepository) FindByUserID(ctx context.Context, userID uuid.UUID) ([]
 }
 
 // AddMemberAtomic атомарно добавляет участника в поездку с проверкой лимита group_size.
-// Использует INSERT ... SELECT WHERE (SELECT count(*) ...) < maxGroupSize,
-// что гарантирует атомарность проверки и вставки на уровне одного SQL-запроса.
-// Возвращает ErrTripFull если лимит уже достигнут (0 rows affected).
-// Возвращает ErrMemberAlreadyExists при нарушении UNIQUE constraint (trip_id + user_id).
+// Использует транзакцию с SELECT ... FOR UPDATE на строке trips для строгой
+// гарантии capacity даже при параллельных join-запросах.
+// Порядок операций:
+//  1. SELECT FOR UPDATE на trip row (блокировка на уровне строки).
+//  2. COUNT(*) текущих участников.
+//  3. Проверка дубликата: для авторизованных — по user_id, для анонимных — по LOWER(display_name).
+//  4. INSERT нового участника.
+//  5. COMMIT.
+//
+// Возвращает ErrTripFull если лимит уже достигнут.
+// Возвращает ErrMemberAlreadyExists при дублировании.
 func (r *TripRepository) AddMemberAtomic(ctx context.Context, member *models.TripMember, maxGroupSize int) (*models.TripMember, error) {
-	query := `
+	tx, err := r.pg.Pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка начала транзакции: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	// Шаг 1: блокировка строки trip через FOR UPDATE.
+	// Предотвращает параллельные INSERT, пока транзакция не завершится.
+	var tripExists bool
+	err = tx.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM trips WHERE id = $1 FOR UPDATE)`,
+		member.TripID,
+	).Scan(&tripExists)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка блокировки поездки: %w", err)
+	}
+	if !tripExists {
+		return nil, ErrTripNotFound
+	}
+
+	// Шаг 2: подсчёт текущих участников.
+	var count int
+	err = tx.QueryRow(ctx,
+		`SELECT COUNT(*) FROM trip_members WHERE trip_id = $1`,
+		member.TripID,
+	).Scan(&count)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка подсчёта участников: %w", err)
+	}
+
+	if count >= maxGroupSize {
+		return nil, ErrTripFull
+	}
+
+	// Шаг 3: проверка дубликатов.
+	if member.UserID != nil {
+		// Авторизованный пользователь: проверка по user_id.
+		var exists bool
+		err = tx.QueryRow(ctx,
+			`SELECT EXISTS(SELECT 1 FROM trip_members WHERE trip_id = $1 AND user_id = $2)`,
+			member.TripID, *member.UserID,
+		).Scan(&exists)
+		if err != nil {
+			return nil, fmt.Errorf("ошибка проверки дубликата: %w", err)
+		}
+		if exists {
+			return nil, ErrMemberAlreadyExists
+		}
+	} else {
+		// Анонимный участник: проверка по LOWER(display_name).
+		var exists bool
+		err = tx.QueryRow(ctx,
+			`SELECT EXISTS(SELECT 1 FROM trip_members WHERE trip_id = $1 AND user_id IS NULL AND LOWER(display_name) = LOWER($2))`,
+			member.TripID, member.DisplayName,
+		).Scan(&exists)
+		if err != nil {
+			return nil, fmt.Errorf("ошибка проверки дубликата анонима: %w", err)
+		}
+		if exists {
+			return nil, ErrMemberAlreadyExists
+		}
+	}
+
+	// Шаг 4: вставка участника.
+	insertQuery := `
 		INSERT INTO trip_members (trip_id, user_id, display_name, role, vibe_vector_id, tags, is_child)
-		SELECT $1, $2, $3, $4, $5, $6, $7
-		WHERE (SELECT COUNT(*) FROM trip_members WHERE trip_id = $1) < $8
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id, trip_id, user_id, display_name, role, vibe_vector_id, tags, is_child, joined_at
 	`
 
 	var result models.TripMember
-	err := r.pg.Pool.QueryRow(ctx, query,
+	err = tx.QueryRow(ctx, insertQuery,
 		member.TripID,
 		member.UserID,
 		member.DisplayName,
@@ -433,7 +503,6 @@ func (r *TripRepository) AddMemberAtomic(ctx context.Context, member *models.Tri
 		member.VibeVectorID,
 		member.Tags,
 		member.IsChild,
-		maxGroupSize,
 	).Scan(
 		&result.ID,
 		&result.TripID,
@@ -446,21 +515,21 @@ func (r *TripRepository) AddMemberAtomic(ctx context.Context, member *models.Tri
 		&result.JoinedAt,
 	)
 	if err != nil {
-		// Проверка нарушения UNIQUE constraint (повторное присоединение).
-		if contains(err.Error(), "duplicate key") || contains(err.Error(), "idx_trip_members_unique_user") {
+		// Дополнительная проверка UNIQUE constraint (fallback).
+		if contains(err.Error(), "duplicate key") || contains(err.Error(), "idx_trip_members_unique") {
 			return nil, ErrMemberAlreadyExists
 		}
-		// Проверка отсутствия вставленной строки (лимит достигнут).
-		if err.Error() == "no rows in result set" {
-			return nil, ErrTripFull
-		}
-		r.logger.Error("ошибка атомарного добавления участника",
+		r.logger.Error("ошибка вставки участника",
 			zap.String("trip_id", member.TripID.String()),
 			zap.String("display_name", member.DisplayName),
-			zap.Int("max_group_size", maxGroupSize),
 			zap.Error(err),
 		)
-		return nil, fmt.Errorf("ошибка атомарного добавления участника: %w", err)
+		return nil, fmt.Errorf("ошибка вставки участника: %w", err)
+	}
+
+	// Шаг 5: фиксация транзакции.
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("ошибка фиксации транзакции: %w", err)
 	}
 
 	r.logger.Info("участник атомарно добавлен в поездку",
@@ -470,3 +539,47 @@ func (r *TripRepository) AddMemberAtomic(ctx context.Context, member *models.Tri
 	)
 	return &result, nil
 }
+
+// IsMember проверяет, является ли пользователь участником поездки.
+// Возвращает true, если пользователь найден в trip_members для данной поездки.
+func (r *TripRepository) IsMember(ctx context.Context, tripID, userID uuid.UUID) (bool, error) {
+	query := `SELECT EXISTS(SELECT 1 FROM trip_members WHERE trip_id = $1 AND user_id = $2)`
+
+	var exists bool
+	err := r.pg.Pool.QueryRow(ctx, query, tripID, userID).Scan(&exists)
+	if err != nil {
+		r.logger.Error("ошибка проверки членства",
+			zap.String("trip_id", tripID.String()),
+			zap.String("user_id", userID.String()),
+			zap.Error(err),
+		)
+		return false, fmt.Errorf("ошибка проверки членства: %w", err)
+	}
+
+	return exists, nil
+}
+
+// FindMemberByUserID находит запись участника по trip_id и user_id.
+// Возвращает ErrMemberNotFound если участник не найден.
+func (r *TripRepository) FindMemberByUserID(ctx context.Context, tripID, userID uuid.UUID) (*models.TripMember, error) {
+	query := `
+		SELECT id, trip_id, user_id, display_name, role, vibe_vector_id, tags, is_child, joined_at
+		FROM trip_members
+		WHERE trip_id = $1 AND user_id = $2
+	`
+
+	var m models.TripMember
+	err := r.pg.Pool.QueryRow(ctx, query, tripID, userID).Scan(
+		&m.ID, &m.TripID, &m.UserID, &m.DisplayName, &m.Role,
+		&m.VibeVectorID, &m.Tags, &m.IsChild, &m.JoinedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrMemberAlreadyExists
+		}
+		return nil, fmt.Errorf("ошибка поиска участника: %w", err)
+	}
+
+	return &m, nil
+}
+

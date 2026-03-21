@@ -1,12 +1,14 @@
 // Файл trip.go реализует бизнес-логику модуля планирования поездок.
 // Содержит методы создания поездки, получения деталей с участниками,
-// генерации invite-токена, присоединения участника и заглушку Group Vibe Merge.
+// генерации invite-токена, присоединения участника (auth-flex),
+// проверки membership-доступа и вычисления merged vibe vector группы.
 package services
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/google/uuid"
@@ -37,22 +39,29 @@ var (
 	ErrInvalidDates = errors.New("некорректные даты поездки")
 )
 
+// CollectionGroupVibes — коллекция для merged vibe-векторов групп в Qdrant.
+const CollectionGroupVibes = "group_vibes"
+
 // TripService — сервис управления поездками.
 type TripService struct {
 	tripRepo *database.TripRepository
 	userRepo *database.UserRepository
+	vibeRepo *database.VibeRepository
 	logger   *zap.Logger
 }
 
 // NewTripService создаёт новый сервис поездок.
+// Параметр vibeRepo может быть nil — при этом MergeGroupVibes не выполняется.
 func NewTripService(
 	tripRepo *database.TripRepository,
 	userRepo *database.UserRepository,
+	vibeRepo *database.VibeRepository,
 	logger *zap.Logger,
 ) *TripService {
 	return &TripService{
 		tripRepo: tripRepo,
 		userRepo: userRepo,
+		vibeRepo: vibeRepo,
 		logger:   logger.Named("trip_service"),
 	}
 }
@@ -107,14 +116,21 @@ func (s *TripService) Create(ctx context.Context, creatorID uuid.UUID, req *mode
 		displayName = creator.DisplayName
 	}
 
+	// VibeVectorID создателя подтягивается из профиля пользователя.
+	var creatorVibeVectorID *uuid.UUID
+	if creator != nil && creator.VibeVectorID != nil {
+		creatorVibeVectorID = creator.VibeVectorID
+	}
+
 	// Добавление создателя как первого участника.
 	creatorMember := &models.TripMember{
-		TripID:      createdTrip.ID,
-		UserID:      &creatorID,
-		DisplayName: displayName,
-		Role:        models.TripRoleCreator,
-		Tags:        []string{},
-		IsChild:     false,
+		TripID:       createdTrip.ID,
+		UserID:       &creatorID,
+		DisplayName:  displayName,
+		Role:         models.TripRoleCreator,
+		VibeVectorID: creatorVibeVectorID,
+		Tags:         []string{},
+		IsChild:      false,
 	}
 
 	member, err := s.tripRepo.AddMember(ctx, creatorMember)
@@ -221,12 +237,18 @@ func (s *TripService) Update(ctx context.Context, tripID, userID uuid.UUID, req 
 }
 
 // GetByID возвращает поездку с полным списком участников.
-func (s *TripService) GetByID(ctx context.Context, tripID uuid.UUID) (*models.TripWithMembers, error) {
+// Доступ ограничен: только участники поездки или её создатель могут видеть детали.
+func (s *TripService) GetByID(ctx context.Context, tripID uuid.UUID, userID uuid.UUID) (*models.TripWithMembers, error) {
 	trip, err := s.tripRepo.FindByID(ctx, tripID)
 	if err != nil {
 		if errors.Is(err, database.ErrTripNotFound) {
 			return nil, ErrTripNotFound
 		}
+		return nil, err
+	}
+
+	// Проверка доступа: создатель или участник.
+	if err := s.checkMembership(ctx, trip, userID); err != nil {
 		return nil, err
 	}
 
@@ -280,8 +302,11 @@ func (s *TripService) GenerateInviteToken(ctx context.Context, tripID uuid.UUID,
 }
 
 // Join присоединяет участника к поездке по invite-токену.
-// Доступно без авторизации: неавторизованные участники имеют user_id = nil.
-// Проверяет валидность токена и атомарно вставляет участника с проверкой group_size.
+// Auth-flex логика:
+//   - Если userID присутствует — подтягивает display_name и vibe_vector_id из профиля users.
+//   - Если userID отсутствует — использует данные из запроса (анонимный join).
+//
+// После присоединения запускает пересчёт merged vibe vector группы.
 func (s *TripService) Join(ctx context.Context, tripID uuid.UUID, req *models.JoinTripRequest, userID *uuid.UUID) (*models.TripMember, error) {
 	// Парсинг invite-токена.
 	inviteToken, err := uuid.Parse(req.InviteToken)
@@ -303,24 +328,51 @@ func (s *TripService) Join(ctx context.Context, tripID uuid.UUID, req *models.Jo
 		return nil, ErrInvalidInviteToken
 	}
 
-	// Подготовка тегов.
+	// Подготовка данных участника.
+	displayName := req.DisplayName
+	var vibeVectorID *uuid.UUID
 	tags := req.Tags
 	if tags == nil {
 		tags = []string{}
 	}
 
-	// Создание записи участника.
-	member := &models.TripMember{
-		TripID:      tripID,
-		UserID:      userID,
-		DisplayName: req.DisplayName,
-		Role:        models.TripRoleMember,
-		Tags:        tags,
-		IsChild:     req.IsChild,
+	// Auth-flex: обогащение данных из профиля авторизованного пользователя.
+	if userID != nil {
+		user, err := s.userRepo.FindByID(ctx, userID.String())
+		if err == nil && user != nil {
+			// Если display_name не передан в запросе — используем из профиля.
+			if displayName == "" {
+				displayName = user.DisplayName
+			}
+			// Подтягиваем vibe_vector_id из профиля пользователя.
+			if user.VibeVectorID != nil {
+				vibeVectorID = user.VibeVectorID
+			}
+		} else {
+			s.logger.Warn("не удалось загрузить профиль для auth-flex join",
+				zap.String("user_id", userID.String()),
+				zap.Error(err),
+			)
+		}
 	}
 
-	// Атомарная вставка с проверкой лимита group_size.
-	// INSERT выполняется только если count < group_size (один SQL-запрос).
+	// Fallback: если display_name всё ещё пуст.
+	if displayName == "" {
+		displayName = "Участник"
+	}
+
+	// Создание записи участника.
+	member := &models.TripMember{
+		TripID:       tripID,
+		UserID:       userID,
+		DisplayName:  displayName,
+		Role:         models.TripRoleMember,
+		VibeVectorID: vibeVectorID,
+		Tags:         tags,
+		IsChild:      req.IsChild,
+	}
+
+	// Атомарная вставка с проверкой лимита group_size и дубликатов.
 	created, err := s.tripRepo.AddMemberAtomic(ctx, member, trip.GroupSize)
 	if err != nil {
 		if errors.Is(err, database.ErrMemberAlreadyExists) {
@@ -337,6 +389,17 @@ func (s *TripService) Join(ctx context.Context, tripID uuid.UUID, req *models.Jo
 		zap.String("member_id", created.ID.String()),
 		zap.String("display_name", created.DisplayName),
 	)
+
+	// Асинхронный пересчёт merged vibe vector (не блокируем ответ).
+	go func() {
+		bgCtx := context.Background()
+		if _, err := s.MergeGroupVibes(bgCtx, tripID); err != nil {
+			s.logger.Warn("ошибка пересчёта merged vibe после join",
+				zap.String("trip_id", tripID.String()),
+				zap.Error(err),
+			)
+		}
+	}()
 
 	return created, nil
 }
@@ -374,13 +437,19 @@ func (s *TripService) GetUserTrips(ctx context.Context, userID uuid.UUID) ([]mod
 }
 
 // GetMembers возвращает список участников поездки.
-func (s *TripService) GetMembers(ctx context.Context, tripID uuid.UUID) ([]models.TripMember, error) {
+// Доступ ограничен: только участники поездки или её создатель видят список.
+func (s *TripService) GetMembers(ctx context.Context, tripID uuid.UUID, userID uuid.UUID) ([]models.TripMember, error) {
 	// Проверка существования поездки.
-	_, err := s.tripRepo.FindByID(ctx, tripID)
+	trip, err := s.tripRepo.FindByID(ctx, tripID)
 	if err != nil {
 		if errors.Is(err, database.ErrTripNotFound) {
 			return nil, ErrTripNotFound
 		}
+		return nil, err
+	}
+
+	// Проверка доступа: создатель или участник.
+	if err := s.checkMembership(ctx, trip, userID); err != nil {
 		return nil, err
 	}
 
@@ -397,27 +466,46 @@ func (s *TripService) GetMembers(ctx context.Context, tripID uuid.UUID) ([]model
 }
 
 // MergeGroupVibes вычисляет средневзвешенный vibe-вектор группы.
-// Текущая реализация — заглушка, возвращающая nil.
-// В будущем будет загружать vibe_vector_id всех участников из Qdrant,
-// вычислять взвешенное среднее (дети получают дополнительный вес на child_friendly)
-// и сохранять результат в Qdrant с обновлением trips.merged_vibe_vector_id.
+// Алгоритм:
+//  1. Загрузить всех участников поездки.
+//  2. Собрать vibe_vector_id у каждого участника.
+//  3. Загрузить векторы из Qdrant (коллекция user_vibes).
+//  4. Вычислить взвешенное среднее (дети получают бонус на child_friendly компоненты).
+//  5. L2-нормализация результата.
+//  6. Upsert merged вектора в Qdrant (коллекция group_vibes).
+//  7. Обновить trips.merged_vibe_vector_id.
 func (s *TripService) MergeGroupVibes(ctx context.Context, tripID uuid.UUID) (*uuid.UUID, error) {
-	// Получение участников с vibe-векторами.
+	// Если vibeRepo не сконфигурирован — пропускаем.
+	if s.vibeRepo == nil {
+		s.logger.Debug("vibeRepo не сконфигурирован, пропуск MergeGroupVibes",
+			zap.String("trip_id", tripID.String()),
+		)
+		return nil, nil
+	}
+
+	// Загрузка участников поездки.
 	members, err := s.tripRepo.FindMembersByTripID(ctx, tripID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("ошибка загрузки участников: %w", err)
 	}
 
 	// Сбор vibe-вектор ID участников, у которых они есть.
-	var vibeVectorIDs []uuid.UUID
+	type vibeEntry struct {
+		vectorID uuid.UUID
+		isChild  bool
+	}
+	var entries []vibeEntry
 	for _, m := range members {
 		if m.VibeVectorID != nil {
-			vibeVectorIDs = append(vibeVectorIDs, *m.VibeVectorID)
+			entries = append(entries, vibeEntry{
+				vectorID: *m.VibeVectorID,
+				isChild:  m.IsChild,
+			})
 		}
 	}
 
 	// Если ни у одного участника нет vibe-вектора — возвращаем nil.
-	if len(vibeVectorIDs) == 0 {
+	if len(entries) == 0 {
 		s.logger.Info("нет vibe-векторов для merge",
 			zap.String("trip_id", tripID.String()),
 			zap.Int("members_count", len(members)),
@@ -425,20 +513,128 @@ func (s *TripService) MergeGroupVibes(ctx context.Context, tripID uuid.UUID) (*u
 		return nil, nil
 	}
 
-	// Заглушка: в будущем здесь будет:
-	// 1. Загрузка векторов из Qdrant по vibeVectorIDs
-	// 2. Вычисление средневзвешенного вектора (детские профили получают
-	//    дополнительный вес на измерения child_friendly)
-	// 3. Upsert merged вектора в Qdrant
-	// 4. Обновление trips.merged_vibe_vector_id
+	// Загрузка векторов из Qdrant.
+	var vectors [][]float32
+	var childFlags []bool
+	for _, e := range entries {
+		vec, err := s.vibeRepo.GetVibeVector(ctx, database.CollectionUserVibes, e.vectorID)
+		if err != nil {
+			s.logger.Warn("не удалось загрузить vibe-вектор участника",
+				zap.String("vector_id", e.vectorID.String()),
+				zap.Error(err),
+			)
+			continue
+		}
+		vectors = append(vectors, vec)
+		childFlags = append(childFlags, e.isChild)
+	}
 
-	s.logger.Info("GroupVibeMerge: заглушка, вектора собраны",
+	if len(vectors) == 0 {
+		s.logger.Info("ни один vibe-вектор не удалось загрузить",
+			zap.String("trip_id", tripID.String()),
+		)
+		return nil, nil
+	}
+
+	// Вычисление взвешенного среднего.
+	dim := len(vectors[0])
+	merged := make([]float32, dim)
+	totalWeight := float64(0)
+
+	for i, vec := range vectors {
+		if len(vec) != dim {
+			continue
+		}
+		weight := 1.0
+		if childFlags[i] {
+			// Детские профили получают увеличенный вес (1.2x)
+			// для большего влияния на child_friendly компоненты маршрута.
+			weight = 1.2
+		}
+		totalWeight += weight
+		for j := 0; j < dim; j++ {
+			merged[j] += float32(weight) * vec[j]
+		}
+	}
+
+	// Нормализация: деление на сумму весов.
+	if totalWeight > 0 {
+		for j := range merged {
+			merged[j] /= float32(totalWeight)
+		}
+	}
+
+	// L2-нормализация.
+	var norm float64
+	for _, v := range merged {
+		norm += float64(v) * float64(v)
+	}
+	norm = math.Sqrt(norm)
+	if norm > 0 {
+		for j := range merged {
+			merged[j] /= float32(norm)
+		}
+	}
+
+	// Генерация или обновление ID merged вектора.
+	// Используем детерминистический UUID на основе tripID для идемпотентности.
+	mergedVectorID := uuid.NewSHA1(uuid.NameSpaceDNS, []byte("group-vibe-"+tripID.String()))
+
+	// Upsert merged вектора в Qdrant.
+	payload := map[string]any{
+		"trip_id":        tripID.String(),
+		"members_count":  len(vectors),
+		"type":           "group_merged",
+	}
+
+	err = s.vibeRepo.UpsertVibeVector(ctx, CollectionGroupVibes, mergedVectorID, merged, payload)
+	if err != nil {
+		s.logger.Warn("не удалось сохранить merged vibe vector в Qdrant",
+			zap.String("trip_id", tripID.String()),
+			zap.Error(err),
+		)
+		// Не возвращаем ошибку — merge не критичен для основного flow.
+		return nil, nil
+	}
+
+	// Обновление trips.merged_vibe_vector_id.
+	if err := s.tripRepo.UpdateMergedVibeVector(ctx, tripID, mergedVectorID); err != nil {
+		s.logger.Warn("не удалось обновить merged_vibe_vector_id в поездке",
+			zap.String("trip_id", tripID.String()),
+			zap.Error(err),
+		)
+		return nil, nil
+	}
+
+	s.logger.Info("merged vibe vector вычислен и сохранён",
 		zap.String("trip_id", tripID.String()),
-		zap.Int("vectors_count", len(vibeVectorIDs)),
-		zap.Strings("vector_ids", uuidsToStrings(vibeVectorIDs)),
+		zap.String("merged_vector_id", mergedVectorID.String()),
+		zap.Int("vectors_count", len(vectors)),
+		zap.Int("dim", dim),
 	)
 
-	return nil, nil
+	return &mergedVectorID, nil
+}
+
+// checkMembership проверяет, что пользователь является участником или создателем поездки.
+// Возвращает ErrTripForbidden если пользователь не имеет доступа.
+func (s *TripService) checkMembership(ctx context.Context, trip *models.Trip, userID uuid.UUID) error {
+	// Создатель всегда имеет доступ.
+	if trip.CreatorID == userID {
+		return nil
+	}
+
+	// Проверка через таблицу trip_members.
+	isMember, err := s.tripRepo.IsMember(ctx, trip.ID, userID)
+	if err != nil {
+		return fmt.Errorf("ошибка проверки membership: %w", err)
+	}
+
+	if !isMember {
+		return ErrTripForbidden
+	}
+
+	return nil
 }
 
 // uuidsToStrings конвертирует срез UUID в срез строк для логирования.

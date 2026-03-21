@@ -660,7 +660,7 @@ func OpenAPISpec(baseURL string) map[string]any {
 				"get": map[string]any{
 					"tags":        []string{"Поездки"},
 					"summary":     "Детали поездки",
-					"description": "Возвращает полную информацию о поездке со списком всех участников.",
+					"description": "Возвращает полную информацию о поездке со списком всех участников. Доступно только участникам поездки или её создателю.",
 					"operationId": "getTripByID",
 					"security":    []map[string]any{{"BearerAuth": []string{}}},
 					"parameters": []map[string]any{
@@ -669,6 +669,7 @@ func OpenAPISpec(baseURL string) map[string]any {
 					"responses": map[string]any{
 						"200": map[string]any{"description": "Объект поездки с участниками."},
 						"401": map[string]any{"description": "Отсутствует или невалидный токен."},
+						"403": map[string]any{"description": "Нет прав (не участник и не создатель поездки)."},
 						"404": map[string]any{"description": "Поездка не найдена."},
 					},
 				},
@@ -720,7 +721,7 @@ func OpenAPISpec(baseURL string) map[string]any {
 				"post": map[string]any{
 					"tags":        []string{"Поездки"},
 					"summary":     "Присоединение к поездке",
-					"description": "Присоединяет участника к поездке по invite-токену. Эндпоинт доступен БЕЗ авторизации — неавторизованные пользователи передают display_name и теги напрямую. Проверяет валидность токена и ограничение group_size.",
+					"description": "Присоединяет участника к поездке по invite-токену.\n\nAuth-flex: если передан JWT — display_name и vibe_vector_id подтягиваются из профиля пользователя автоматически. Если JWT отсутствует — используются данные из запроса (анонимный join).\n\nПроверки: валидность токена, ограничение group_size, дубликаты (по user_id для авторизованных, по display_name для анонимных).\n\nПосле присоединения автоматически пересчитывается merged vibe vector группы.",
 					"operationId": "joinTrip",
 					"parameters": []map[string]any{
 						{"name": "id", "in": "path", "required": true, "schema": map[string]any{"type": "string", "format": "uuid"}, "description": "UUID поездки."},
@@ -734,7 +735,7 @@ func OpenAPISpec(baseURL string) map[string]any {
 						},
 					},
 					"responses": map[string]any{
-						"200": map[string]any{"description": "Участник присоединился. Возвращает объект TripMember."},
+						"200": map[string]any{"description": "Участник присоединился. Возвращает объект TripMember с vibe_vector_id и tags."},
 						"400": map[string]any{"description": "Ошибка валидации или неверный invite-токен."},
 						"404": map[string]any{"description": "Поездка не найдена."},
 						"409": map[string]any{"description": "Превышен лимит участников или пользователь уже участвует."},
@@ -745,7 +746,7 @@ func OpenAPISpec(baseURL string) map[string]any {
 				"get": map[string]any{
 					"tags":        []string{"Поездки"},
 					"summary":     "Список участников поездки",
-					"description": "Возвращает всех участников поездки, отсортированных по дате присоединения.",
+					"description": "Возвращает всех участников поездки, отсортированных по дате присоединения. Доступно только участникам поездки или её создателю.",
 					"operationId": "listTripMembers",
 					"security":    []map[string]any{{"BearerAuth": []string{}}},
 					"parameters": []map[string]any{
@@ -754,6 +755,7 @@ func OpenAPISpec(baseURL string) map[string]any {
 					"responses": map[string]any{
 						"200": map[string]any{"description": "Массив участников поездки."},
 						"401": map[string]any{"description": "Отсутствует или невалидный токен."},
+						"403": map[string]any{"description": "Нет прав (не участник и не создатель поездки)."},
 						"404": map[string]any{"description": "Поездка не найдена."},
 					},
 				},
