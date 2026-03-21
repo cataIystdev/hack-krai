@@ -74,10 +74,32 @@ func (v *VoskClient) Transcribe(ctx context.Context, audioReader io.Reader, file
 		zap.Int("pcm_bytes", len(pcmData)),
 	)
 
-	// Шаг 2: Подключение к Vosk-server по WebSocket.
-	conn, _, err := websocket.DefaultDialer.DialContext(ctx, v.wsURL, nil)
-	if err != nil {
-		return "", fmt.Errorf("ошибка подключения к Vosk-server (%s): %w", v.wsURL, err)
+	// Шаг 2: Подключение к Vosk-server по WebSocket с retry.
+	// Vosk загружает русскую модель ~60 секунд, connection refused возможен при рестарте.
+	var conn *websocket.Conn
+	const maxRetries = 3
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		conn, _, err = websocket.DefaultDialer.DialContext(ctx, v.wsURL, nil)
+		if err == nil {
+			break
+		}
+
+		if attempt == maxRetries {
+			return "", fmt.Errorf("ошибка подключения к Vosk-server после %d попыток (%s): %w", maxRetries+1, v.wsURL, err)
+		}
+
+		backoff := time.Duration(1<<uint(attempt+1)) * time.Second // 2s, 4s, 8s
+		v.logger.Warn("Vosk-server недоступен, повторная попытка",
+			zap.Int("attempt", attempt+1),
+			zap.Duration("backoff", backoff),
+			zap.Error(err),
+		)
+
+		select {
+		case <-ctx.Done():
+			return "", fmt.Errorf("контекст отменён при подключении к Vosk: %w", ctx.Err())
+		case <-time.After(backoff):
+		}
 	}
 	defer conn.Close()
 

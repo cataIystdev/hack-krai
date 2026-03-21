@@ -197,11 +197,11 @@ services:
     volumes:
       - ./vosk/asr_server.py:/opt/vosk-server/websocket/asr_server.py:ro
     healthcheck:
-      test: ["CMD-SHELL", "exit 0"]
-      interval: 30s
+      test: ["CMD-SHELL", "python3 -c 'import socket; s=socket.socket(); s.settimeout(2); s.connect((\"127.0.0.1\", 2700)); s.close()' || exit 1"]
+      interval: 10s
       timeout: 5s
-      retries: 3
-      start_period: 30s
+      retries: 10
+      start_period: 60s
     networks:
       - kudytudy-network
 
