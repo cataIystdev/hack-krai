@@ -149,6 +149,9 @@ func main() {
 	if dbManager.Postgres != nil && dbManager.Qdrant != nil {
 		vibeRepo := database.NewVibeRepository(dbManager.Postgres, dbManager.Qdrant, logger)
 		vibeService = services.NewVibeService(voskClient, llmClient, embeddingsClient, vibeRepo, locationRepo, storageService, cfg.AI.DemoLatencyMs, logger)
+
+		// Seed эмбеддингов сцен свайпа в Qdrant (в фоне чтобы не блокировать старт).
+		go vibeService.SeedSceneVectors(context.Background())
 	} else {
 		logger.Warn("Vibe-сервис недоступен: требуется PostgreSQL и Qdrant")
 	}

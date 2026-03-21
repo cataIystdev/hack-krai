@@ -620,3 +620,64 @@ func formatAxesForEmbedding(axes *ai.VibeAxes) string {
 		axes.VibeSummary,
 	)
 }
+
+// SeedSceneVectors загружает все сцены из PostgreSQL и upsert'ит
+// их эмбеддинги в Qdrant (коллекция user_vibes).
+// Вызывается при старте API. Идемпотентный — перезаписывает при каждом старте.
+func (s *VibeService) SeedSceneVectors(ctx context.Context) {
+	if s.embeddings == nil {
+		s.logger.Warn("SeedSceneVectors: embeddings client не настроен, пропускаем")
+		return
+	}
+
+	scenes, err := s.vibeRepo.GetAllScenes(ctx)
+	if err != nil {
+		s.logger.Error("SeedSceneVectors: ошибка получения сцен", zap.Error(err))
+		return
+	}
+
+	if len(scenes) == 0 {
+		s.logger.Info("SeedSceneVectors: сцен не найдено")
+		return
+	}
+
+	s.logger.Info("SeedSceneVectors: начинаем seed эмбеддингов для сцен",
+		zap.Int("count", len(scenes)),
+	)
+
+	seeded := 0
+	for _, scene := range scenes {
+		// Формируем текст для эмбеддинга: заголовок + описание.
+		text := scene.Title + ". " + scene.Description
+
+		vector, err := s.embeddings.Generate(ctx, text)
+		if err != nil {
+			s.logger.Error("SeedSceneVectors: ошибка генерации эмбеддинга",
+				zap.String("scene_id", scene.ID.String()),
+				zap.String("title", scene.Title),
+				zap.Error(err),
+			)
+			continue
+		}
+
+		payload := map[string]any{
+			"type":  "scene",
+			"title": scene.Title,
+		}
+
+		if err := s.vibeRepo.UpsertVibeVector(ctx, database.CollectionUserVibes, scene.ID, vector, payload); err != nil {
+			s.logger.Error("SeedSceneVectors: ошибка upsert в Qdrant",
+				zap.String("scene_id", scene.ID.String()),
+				zap.Error(err),
+			)
+			continue
+		}
+
+		seeded++
+	}
+
+	s.logger.Info("SeedSceneVectors: seed завершён",
+		zap.Int("seeded", seeded),
+		zap.Int("total", len(scenes)),
+	)
+}
