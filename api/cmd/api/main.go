@@ -99,9 +99,14 @@ func main() {
 	}
 
 	// Сервис карты (MapService).
+	// vibeRepo передаётся для hybrid-режима (обогащение рекомендациями из Qdrant).
 	var mapService *services.MapService
+	var vibeRepo *database.VibeRepository
+	if dbManager.Postgres != nil && dbManager.Qdrant != nil {
+		vibeRepo = database.NewVibeRepository(dbManager.Postgres, dbManager.Qdrant, logger)
+	}
 	if locationRepo != nil {
-		mapService = services.NewMapService(locationRepo, logger)
+		mapService = services.NewMapService(locationRepo, vibeRepo, logger)
 	}
 
 	// Сервис маршрутов (RouteService).

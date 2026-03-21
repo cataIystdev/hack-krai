@@ -1,5 +1,6 @@
 // Файл map_test.go содержит unit-тесты для моделей карты.
-// Проверяет валидацию MapLocationFilter, HasBBox и NormalizeLimit.
+// Проверяет валидацию MapLocationFilter, HasBBox, NormalizeLimit, IsDemo,
+// GetProfile и валидацию demo-профилей.
 package models
 
 import "testing"
@@ -88,6 +89,36 @@ func TestMapLocationFilter_Validate(t *testing.T) {
 			filter:    MapLocationFilter{MinLat: floatPtr(-100.0), MaxLat: floatPtr(45.0), MinLon: floatPtr(37.0), MaxLon: floatPtr(40.0)},
 			wantError: true,
 		},
+		{
+			name:      "валидный профиль calm_wine_mountains",
+			filter:    MapLocationFilter{Profile: strPtr("calm_wine_mountains")},
+			wantError: false,
+		},
+		{
+			name:      "валидный профиль active_adventure",
+			filter:    MapLocationFilter{Profile: strPtr("active_adventure")},
+			wantError: false,
+		},
+		{
+			name:      "валидный профиль family_kids",
+			filter:    MapLocationFilter{Profile: strPtr("family_kids")},
+			wantError: false,
+		},
+		{
+			name:      "валидный профиль gastro_cultural",
+			filter:    MapLocationFilter{Profile: strPtr("gastro_cultural")},
+			wantError: false,
+		},
+		{
+			name:      "невалидный профиль",
+			filter:    MapLocationFilter{Profile: strPtr("unknown_profile")},
+			wantError: true,
+		},
+		{
+			name:      "пустой профиль (нет ошибки)",
+			filter:    MapLocationFilter{Profile: strPtr("")},
+			wantError: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -101,7 +132,83 @@ func TestMapLocationFilter_Validate(t *testing.T) {
 	}
 }
 
+// TestMapLocationFilter_IsDemo проверяет определение demo-режима.
+func TestMapLocationFilter_IsDemo(t *testing.T) {
+	tests := []struct {
+		name   string
+		filter MapLocationFilter
+		want   bool
+	}{
+		{
+			name:   "demo включен",
+			filter: MapLocationFilter{Demo: boolPtr(true)},
+			want:   true,
+		},
+		{
+			name:   "demo выключен",
+			filter: MapLocationFilter{Demo: boolPtr(false)},
+			want:   false,
+		},
+		{
+			name:   "demo не задан",
+			filter: MapLocationFilter{},
+			want:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.filter.IsDemo(); got != tt.want {
+				t.Errorf("IsDemo() = %v, ожидалось %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestMapLocationFilter_GetProfile проверяет получение demo-профиля.
+func TestMapLocationFilter_GetProfile(t *testing.T) {
+	tests := []struct {
+		name   string
+		filter MapLocationFilter
+		want   string
+	}{
+		{
+			name:   "профиль задан",
+			filter: MapLocationFilter{Profile: strPtr("active_adventure")},
+			want:   "active_adventure",
+		},
+		{
+			name:   "профиль пуст — по умолчанию",
+			filter: MapLocationFilter{Profile: strPtr("")},
+			want:   "calm_wine_mountains",
+		},
+		{
+			name:   "профиль nil — по умолчанию",
+			filter: MapLocationFilter{},
+			want:   "calm_wine_mountains",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.filter.GetProfile(); got != tt.want {
+				t.Errorf("GetProfile() = %q, ожидалось %q", got, tt.want)
+			}
+		})
+	}
+}
+
 // floatPtr — вспомогательная функция для создания указателя на float64.
 func floatPtr(v float64) *float64 {
+	return &v
+}
+
+// boolPtr — вспомогательная функция для создания указателя на bool.
+func boolPtr(v bool) *bool {
+	return &v
+}
+
+// strPtr — вспомогательная функция для создания указателя на string.
+func strPtr(v string) *string {
 	return &v
 }

@@ -443,7 +443,7 @@ func (r *LocationRepository) SearchForMap(ctx context.Context, filter *models.Ma
 	args = append(args, filter.Limit)
 	query := fmt.Sprintf(`
 		SELECT id, name, ST_Y(geo) AS latitude, ST_X(geo) AS longitude,
-			category, density_level, preview_image_url
+			category, density_level, preview_image_url, description_short
 		FROM locations
 		WHERE %s
 		ORDER BY created_at DESC
@@ -462,7 +462,7 @@ func (r *LocationRepository) SearchForMap(ctx context.Context, filter *models.Ma
 		var p models.MapPoint
 		err := rows.Scan(
 			&p.ID, &p.Name, &p.Latitude, &p.Longitude,
-			&p.Category, &p.DensityLevel, &p.PreviewImageURL,
+			&p.Category, &p.DensityLevel, &p.PreviewImageURL, &p.DescriptionShort,
 		)
 		if err != nil {
 			r.logger.Error("ошибка сканирования точки карты", zap.Error(err))

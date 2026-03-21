@@ -1,11 +1,12 @@
 // Файл map.go содержит модели данных для эндпоинта GET /api/v1/map/locations.
 // Определяет DTO для фильтрации точек на карте, структуру точки и ответ API.
-// Поддерживает фильтрацию по bbox, категории, плотности и статусу рекомендации.
+// Поддерживает фильтрацию по bbox, категории, плотности, статусу рекомендации,
+// а также demo-режим с предустановленными профилями.
 package models
 
 // MapLocationFilter — параметры фильтрации точек для карты.
 // Поддерживает bbox-поиск, фильтрацию по категории и плотности,
-// а также флаг рекомендованных точек.
+// флаг рекомендованных точек, а также demo-режимы.
 type MapLocationFilter struct {
 	// MinLat — минимальная широта bbox.
 	MinLat *float64 `query:"min_lat"`
@@ -30,11 +31,32 @@ type MapLocationFilter struct {
 
 	// Limit — максимальное количество точек в ответе.
 	Limit int `query:"limit"`
+
+	// Demo — включить demo-режим с curated набором точек и рекомендаций.
+	Demo *bool `query:"demo"`
+
+	// Profile — имя demo-профиля для предустановленных рекомендаций.
+	// Доступные профили: calm_wine_mountains, active_adventure,
+	// family_kids, gastro_cultural. По умолчанию: calm_wine_mountains.
+	Profile *string `query:"profile"`
 }
 
 // HasBBox проверяет, заданы ли все четыре координаты bounding box.
 func (f *MapLocationFilter) HasBBox() bool {
 	return f.MinLat != nil && f.MaxLat != nil && f.MinLon != nil && f.MaxLon != nil
+}
+
+// IsDemo проверяет, включён ли demo-режим.
+func (f *MapLocationFilter) IsDemo() bool {
+	return f.Demo != nil && *f.Demo
+}
+
+// GetProfile возвращает имя demo-профиля или значение по умолчанию.
+func (f *MapLocationFilter) GetProfile() string {
+	if f.Profile != nil && *f.Profile != "" {
+		return *f.Profile
+	}
+	return "calm_wine_mountains"
 }
 
 // NormalizeLimit устанавливает лимит по умолчанию и ограничивает максимум.
@@ -64,11 +86,25 @@ func (f *MapLocationFilter) Validate() string {
 			return "min_lon должна быть меньше max_lon"
 		}
 	}
+
+	// Валидация demo-профиля.
+	if f.Profile != nil && *f.Profile != "" {
+		validProfiles := map[string]bool{
+			"calm_wine_mountains": true,
+			"active_adventure":    true,
+			"family_kids":         true,
+			"gastro_cultural":     true,
+		}
+		if !validProfiles[*f.Profile] {
+			return "неизвестный demo-профиль; доступны: calm_wine_mountains, active_adventure, family_kids, gastro_cultural"
+		}
+	}
+
 	return ""
 }
 
 // MapPoint — точка локации на карте.
-// Содержит только поля, необходимые для рендеринга маркера на карте.
+// Содержит поля для рендеринга маркера, tooltip и идентификации рекомендаций.
 type MapPoint struct {
 	// ID — уникальный идентификатор локации.
 	ID string `json:"id"`
@@ -91,6 +127,9 @@ type MapPoint struct {
 	// PreviewImageURL — URL preview-изображения для маркера.
 	PreviewImageURL string `json:"preview_image_url"`
 
+	// DescriptionShort — краткое описание для tooltip на карте.
+	DescriptionShort string `json:"description_short"`
+
 	// IsRecommended — помечена ли точка как рекомендованная для текущего профиля.
 	IsRecommended bool `json:"is_recommended"`
 
@@ -105,4 +144,7 @@ type MapLocationsResponse struct {
 
 	// Total — общее количество точек в ответе.
 	Total int `json:"total"`
+
+	// Profile — название использованного demo-профиля (только в demo-режиме).
+	Profile string `json:"profile,omitempty"`
 }
