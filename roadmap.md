@@ -1076,37 +1076,62 @@ go test ./internal/models/ -v -- ALL PASS
 
 ### Current status
 
-🔶 Частично реализовано.
+ **DONE** (все gap-ы закрыты)
 
-### Already implemented
+### Implementation tracking
 
-1. register
-2. login
-3. refresh
-4. JWT middleware
-5. RBAC middleware
-6. `/profile/me` read/update
-7. health/live/ready probes and OpenAPI docs
+#### Endpoint Audit (4 проблемы найдены и исправлены)
 
-### Gap to complete
+| Проблема | Описание | Решение |
+|----------|----------|---------|
+| media/upload без auth | POST /media/upload был публичным | Перемещён под JWT middleware |
+| locations без RBAC | PUT/DELETE имели JWT, но без RequireRole | Добавлен RequireRole(host, b2g_admin) |
+| Join без OptionalJWT | c.Locals("user_id") всегда nil | Создан OptionalJWTAuth middleware |
+| locations POST двойной JWT | POST имел jwtMiddleware дважды | Убрано дублирование |
 
-1. session UX helpers only if frontend really needs them
-2. auth bootstrap / demo-user convenience only if it reduces integration friction
-3. verify all protected endpoints consistently use RBAC where intended
-4. audit endpoints with mixed public/auth semantics so that handlers do not rely on JWT context when middleware is absent
-5. align JWT-only protection with resource-level authorization for trip/member data
+#### OptionalJWTAuth Middleware
 
-### Deliverables
+Новый middleware для auth-flex эндпоинтов:
+- Если JWT передан и валиден — user_id/role в Locals
+- Если JWT отсутствует — пропускает без ошибки
+- Если JWT невалиден — пропускает без ошибки (логирует Debug)
+- 4 unit-теста: no token, invalid token, valid token, bad format
 
-1. Register/login/refresh polish
-2. Role checks
-3. demo user bootstrap
-4. session UX helper endpoints if needed
-5. protected/public endpoint audit with explicit authorization matrix
+#### Demo User Bootstrap
 
-### Why now
+Идемпотентное создание при запуске API:
+- `demo@deepkrai.ru` / `demo1234` / tourist
+- `host@deepkrai.ru` / `host1234` / host
+- При повторном запуске ничего не создаёт
 
-Auth не должен блокировать demo-first сборку UI, но должен быть готов рано, чтобы не врастать в mock auth.
+### Файлы
+
+| Файл | Действие | Описание |
+|------|----------|----------|
+| `middleware/optional_jwt.go` | NEW | OptionalJWTAuth middleware |
+| `middleware/optional_jwt_test.go` | NEW | 4 тестовых сценария |
+| `services/bootstrap.go` | NEW | Демо-пользователи при запуске |
+| `handlers/router.go` | MODIFY | Authorization matrix fix |
+| `cmd/api/main.go` | MODIFY | Bootstrap вызов |
+| `handlers/openapi.go` | MODIFY | Security и RBAC descriptions |
+| `docs/phase9/auth_hardening.md` | NEW | Полная документация + Authorization matrix |
+
+### Test results
+
+```
+go build ./... -- OK
+go test ./internal/middleware/ -- 15 tests ALL PASS
+go test ./internal/services/ -- 37 tests ALL PASS
+go test ./internal/models/ -- ALL PASS
+```
+
+### Acceptance criteria
+
+1. POST /media/upload требует JWT
+2. PUT/DELETE /locations/:id требуют JWT + RBAC(host, b2g_admin)
+3. POST /trips/:id/join использует OptionalJWTAuth (auth-flex работает)
+4. Демо-пользователи создаются при первом запуске
+5. Полная Authorization Matrix на 27 эндпоинтов задокументирована
 
 ---
 

@@ -247,6 +247,7 @@ func OpenAPISpec(baseURL string) map[string]any {
 					"summary":     "Загрузка медиафайла",
 					"description": "Загружает медиафайл в S3-совместимое хранилище MinIO.\n\nФайл передаётся через multipart/form-data в поле `file`. Перед загрузкой выполняется валидация:\n\n1. **Наличие файла** -- поле `file` обязательно.\n2. **Размер** -- максимум 100 МБ (104 857 600 байт).\n3. **MIME-тип** -- разрешены только определённые типы файлов.\n\n**Разрешённые MIME-типы:**\n- Изображения: `image/jpeg`, `image/png`, `image/gif`, `image/webp`\n- Видео: `video/mp4`, `video/webm`, `video/quicktime`\n- Аудио: `audio/mpeg`, `audio/mp3`, `audio/ogg`, `audio/webm`, `audio/wav`\n- Бинарные: `application/octet-stream` (для .splat и других 3D-файлов)\n\nПосле успешной загрузки генерируется уникальное имя объекта в формате `uploads/{unix_nano}_{original_name}` и создаётся presigned URL с временем жизни 24 часа для доступа к файлу.\n\n**Примеры использования:**\n- Загрузка фото локации фермером при онбординге.\n- Загрузка видео для генерации 3D-слепка (Gaussian Splatting).\n- Загрузка готового .splat файла.\n- Загрузка аудио-истории для POI.",
 					"operationId": "uploadMedia",
+					"security":    []map[string]any{{"BearerAuth": []string{}}},
 					"requestBody": map[string]any{
 						"required":    true,
 						"description": "Multipart-форма с загружаемым файлом. Поле `file` является обязательным.",
@@ -541,7 +542,7 @@ func OpenAPISpec(baseURL string) map[string]any {
 				"put": map[string]any{
 					"tags":        []string{"Локации"},
 					"summary":     "Обновление локации",
-					"description": "Обновляет данные локации. Доступно только владельцу (owner_id). Все поля опциональны — обновляются только переданные.",
+					"description": "Обновляет данные локации. Доступно только пользователям с ролью host или b2g_admin. Все поля опциональны — обновляются только переданные.",
 					"operationId": "updateLocation",
 					"security":    []map[string]any{{"BearerAuth": []string{}}},
 					"parameters": []map[string]any{
@@ -558,14 +559,14 @@ func OpenAPISpec(baseURL string) map[string]any {
 					"responses": map[string]any{
 						"200": map[string]any{"description": "Локация обновлена.", "content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": "object", "properties": map[string]any{"success": map[string]any{"type": "boolean"}, "data": map[string]any{"$ref": "#/components/schemas/Location"}}}}}},
 						"401": map[string]any{"description": "Отсутствует или невалидный токен."},
-						"403": map[string]any{"description": "Нет прав на изменение этой локации (не владелец)."},
+						"403": map[string]any{"description": "Недостаточно прав (требуется роль host или b2g_admin)."},
 						"404": map[string]any{"description": "Локация не найдена."},
 					},
 				},
 				"delete": map[string]any{
 					"tags":        []string{"Локации"},
 					"summary":     "Удаление локации",
-					"description": "Удаляет локацию. Доступно только владельцу (owner_id).",
+					"description": "Удаляет локацию. Доступно только пользователям с ролью host или b2g_admin.",
 					"operationId": "deleteLocation",
 					"security":    []map[string]any{{"BearerAuth": []string{}}},
 					"parameters": []map[string]any{
@@ -574,7 +575,7 @@ func OpenAPISpec(baseURL string) map[string]any {
 					"responses": map[string]any{
 						"200": map[string]any{"description": "Локация удалена."},
 						"401": map[string]any{"description": "Отсутствует или невалидный токен."},
-						"403": map[string]any{"description": "Нет прав на удаление этой локации (не владелец)."},
+						"403": map[string]any{"description": "Недостаточно прав (требуется роль host или b2g_admin)."},
 						"404": map[string]any{"description": "Локация не найдена."},
 					},
 				},

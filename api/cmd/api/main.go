@@ -205,6 +205,16 @@ func main() {
 	// --- 7. Регистрация маршрутов ---
 	handlers.SetupRoutes(app, dbManager, storageService, authService, jwtService, userRepo, locationService, tripService, vibeService, mapService, routeService, logger)
 
+	// --- 7.5 Bootstrap демо-пользователей ---
+	// Идемпотентное создание предустановленных аккаунтов для тестирования и интеграции.
+	if userRepo != nil {
+		if created, err := services.BootstrapDemoUsers(ctx, userRepo, logger); err != nil {
+			logger.Warn("ошибка bootstrap демо-пользователей", zap.Error(err))
+		} else if created > 0 {
+			logger.Info("демо-пользователи созданы", zap.Int("count", created))
+		}
+	}
+
 	// --- 8. Graceful Shutdown ---
 	// Создание канала для перехвата сигналов завершения (SIGINT, SIGTERM).
 	quit := make(chan os.Signal, 1)

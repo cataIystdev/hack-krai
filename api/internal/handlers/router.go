@@ -51,9 +51,8 @@ func SetupRoutes(
 	v1.Get("/health/live", healthHandler.Live)   // liveness probe (мгновенный ответ)
 	v1.Get("/health/ready", healthHandler.Ready) // readiness probe (пинг всех БД)
 
-	// Обработчик загрузки медиафайлов.
+	// Обработчик загрузки медиафайлов (перемещён в защищённую зону — см. ниже).
 	mediaHandler := NewMediaHandler(storage, logger)
-	v1.Post("/media/upload", mediaHandler.Upload)
 
 	// Scalar API документация.
 	scalarHandler := NewScalarHandler(logger)
@@ -79,9 +78,13 @@ func SetupRoutes(
 		v1.Get("/map/locations", mapHandler.GetMapLocations)
 	}
 
-	// Поездки — публичный эндпоинт (присоединение по invite-ссылке без авторизации).
+	// Поездки — публичный эндпоинт с необязательной JWT-аутентификацией.
+	// OptionalJWTAuth парсит JWT если передан, но не блокирует запрос при отсутствии.
+	// Это позволяет auth-flex join: авторизованные получают user_id из профиля,
+	// неавторизованные — проходят анонимно.
+	optionalJWT := middleware.NewOptionalJWTAuth(jwtService, logger)
 	tripHandler := NewTripHandler(tripService, logger)
-	v1.Post("/trips/:id/join", tripHandler.Join)
+	v1.Post("/trips/:id/join", optionalJWT, tripHandler.Join)
 
 	// --- Защищённые маршруты (требуют JWT) ---
 
@@ -101,12 +104,16 @@ func SetupRoutes(
 	profile.Post("/finalize", vibeHandler.Finalize)
 	profile.Get("/scenes", vibeHandler.GetScenes)
 
+	// Загрузка медиафайлов — защищённый эндпоинт (JWT обязателен).
+	v1.Post("/media/upload", jwtMiddleware, mediaHandler.Upload)
+
 	// Локации — защищённые эндпоинты (создание, обновление, удаление).
-	// POST доступен только хостам и администраторам (RBAC).
+	// Все операции записи доступны только хостам и администраторам (RBAC).
 	locationsProtected := v1.Group("/locations", jwtMiddleware)
-	locationsProtected.Post("/", jwtMiddleware, middleware.RequireRole(logger, string(models.RoleHost), string(models.RoleB2GAdmin)), locationHandler.Create)
-	locationsProtected.Put("/:id", locationHandler.Update)
-	locationsProtected.Delete("/:id", locationHandler.Delete)
+	locationsRBAC := middleware.RequireRole(logger, string(models.RoleHost), string(models.RoleB2GAdmin))
+	locationsProtected.Post("/", locationsRBAC, locationHandler.Create)
+	locationsProtected.Put("/:id", locationsRBAC, locationHandler.Update)
+	locationsProtected.Delete("/:id", locationsRBAC, locationHandler.Delete)
 
 	// Поездки — защищённые эндпоинты (создание, детали, invite, участники, маршрут).
 	tripsProtected := v1.Group("/trips", jwtMiddleware)
