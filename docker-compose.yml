@@ -36,10 +36,9 @@ services:
         condition: service_started
       qdrant:
         condition: service_started
-      vosk:
-        condition: service_healthy
     networks:
       - kudytudy-network
+      - kudytudy-shared
 
   # --- PostgreSQL 16 + PostGIS ------------------------------------------------
   # Основная реляционная БД для пользователей, локаций, бронирований.
@@ -191,27 +190,8 @@ services:
     networks:
       - kudytudy-network
 
-  # --- Vosk STT (Speech-to-Text) -----------------------------------------------
-  # Локальный бесплатный сервис распознавания речи. Русская модель (kaldi-ru).
-  # WebSocket API на порту 2700. Принимает PCM 16kHz mono.
-  # Используется вместо Whisper API для конвертации голоса в текст.
-  vosk:
-    image: alphacep/kaldi-ru:latest
-    restart: unless-stopped
-    ports:
-      - "${VOSK_PORT:-2700}:2700"
-    environment:
-      - VOSK_SAMPLE_RATE=16000
-    volumes:
-      - ./vosk/asr_server.py:/opt/vosk-server/websocket/asr_server.py:ro
-    healthcheck:
-      test: ["CMD-SHELL", "python3 -c 'import socket; s=socket.socket(); s.settimeout(2); s.connect((\"127.0.0.1\", 2700)); s.close()' || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 60s
-    networks:
-      - kudytudy-network
+  # Vosk STT вынесен в docker-compose.shared.yml (один контейнер на все окружения).
+  # API подключается к нему через сеть kudytudy-shared.
 
   # --- Local Embeddings Server (miniLM) ----------------------------------------
   # Локальный легковесный генератор векторов для Qdrant (совместим с OpenAI API)
@@ -249,3 +229,7 @@ volumes:
 networks:
   kudytudy-network:
     driver: bridge
+  # Общая сеть для shared-сервисов (Vosk). Создаётся docker-compose.shared.yml.
+  kudytudy-shared:
+    external: true
+    name: deepkrai-shared_kudytudy-shared

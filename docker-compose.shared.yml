@@ -1,0 +1,37 @@
+# ==============================================================================
+# КудыТуды — Shared Services (Docker Compose)
+# ==============================================================================
+# Сервисы, которые используются ВСЕМИ окружениями (dev, test-catalyst, и т.д.).
+# Запускается ОДИН раз. Все окружения подключаются к общей сети kudytudy-shared.
+#
+# Запуск:   docker compose -f docker-compose.shared.yml --project-name deepkrai-shared up -d
+# Остановка: docker compose -f docker-compose.shared.yml --project-name deepkrai-shared down
+# ==============================================================================
+
+services:
+  # --- Vosk STT (Speech-to-Text) -----------------------------------------------
+  # Локальный бесплатный сервис распознавания речи. Русская модель (kaldi-ru).
+  # WebSocket API на порту 2700. Принимает PCM 16kHz mono.
+  # Один контейнер на все окружения (модель занимает ~6.5 GB RAM).
+  vosk:
+    image: alphacep/kaldi-ru:latest
+    restart: unless-stopped
+    environment:
+      - VOSK_SAMPLE_RATE=16000
+    volumes:
+      - ./vosk/asr_server.py:/opt/vosk-server/websocket/asr_server.py:ro
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c 'import socket; s=socket.socket(); s.settimeout(2); s.connect((\"127.0.0.1\", 2700)); s.close()' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 90s
+    networks:
+      - kudytudy-shared
+
+# --- Shared Network -----------------------------------------------------------
+# Общая сеть для сервисов, разделяемых между окружениями.
+# Создаётся этим файлом, подключается как external в per-env docker-compose.yml.
+networks:
+  kudytudy-shared:
+    driver: bridge

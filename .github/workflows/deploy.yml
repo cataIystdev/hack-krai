@@ -28,6 +28,7 @@ jobs:
             export ENV_NAME=$BRANCH_NAME
             export DEPLOY_DIR=/opt/deepkrai/$ENV_NAME
             export CONFIG_DIR=/opt/deepkrai/configs
+            export SHARED_DIR=/opt/deepkrai/shared
 
             echo "Deploying branch: $ENV_NAME to $DEPLOY_DIR"
 
@@ -72,6 +73,7 @@ jobs:
               sed -i 's/MINIO_HOST=.*/MINIO_HOST=minio/' $DEPLOY_DIR/.env.api
               sed -i 's/MINIO_API_PORT=.*/MINIO_API_PORT=9000/' $DEPLOY_DIR/.env.api
               sed -i 's/MINIO_CONSOLE_PORT=.*/MINIO_CONSOLE_PORT=9001/' $DEPLOY_DIR/.env.api
+              # Vosk в shared сети — имя контейнера: deepkrai-shared-vosk-1
               sed -i 's/VOSK_HOST=.*/VOSK_HOST=vosk/' $DEPLOY_DIR/.env.api
               sed -i 's/VOSK_PORT=.*/VOSK_PORT=2700/' $DEPLOY_DIR/.env.api
               sed -i 's|AI_EMBEDDINGS_BASE_URL=.*|AI_EMBEDDINGS_BASE_URL=http://embeddings-server:7997/|' $DEPLOY_DIR/.env.api
@@ -81,11 +83,34 @@ jobs:
               echo "⚠️ WARNING: Environment file $CONFIG_DIR/.env.$ENV_NAME not found."
             fi
 
-            # 5. Stop old containers to free ports, then start fresh
+            # 5. Deploy shared services (Vosk STT) — один на все окружения.
+            # Копируем shared files в общую директорию.
+            mkdir -p $SHARED_DIR/vosk
+            cp $DEPLOY_DIR/docker-compose.shared.yml $SHARED_DIR/docker-compose.shared.yml
+            cp $DEPLOY_DIR/vosk/asr_server.py $SHARED_DIR/vosk/asr_server.py
+
+            # Поднимаем shared services (если уже запущены — обновляем).
+            cd $SHARED_DIR
+            docker compose -f docker-compose.shared.yml --project-name deepkrai-shared up -d
+            cd $DEPLOY_DIR
+
+            # Ждём пока Vosk загрузит модель (healthcheck по TCP 2700).
+            echo "⏳ Waiting for Vosk STT to become healthy..."
+            for i in $(seq 1 24); do
+              VOSK_STATUS=$(docker inspect --format='{{.State.Health.Status}}' deepkrai-shared-vosk-1 2>/dev/null || echo "not_found")
+              echo "  [… $((i*5))s] vosk=$VOSK_STATUS"
+              if [ "$VOSK_STATUS" = "healthy" ]; then
+                echo "✅ Vosk STT is healthy!"
+                break
+              fi
+              sleep 5
+            done
+
+            # 6. Stop old containers to free ports, then start fresh
             docker compose --project-name deepkrai-$ENV_NAME down --remove-orphans || true
             docker compose --project-name deepkrai-$ENV_NAME up -d --build
 
-            # 6. Wait for slow-starting services (Neo4j needs ~80s)
+            # 7. Wait for slow-starting services (Neo4j needs ~80s)
             echo "⏳ Waiting for all databases to become healthy..."
             for i in $(seq 1 24); do
               NEO4J_STATUS=$(docker inspect --format='{{.State.Health.Status}}' deepkrai-${ENV_NAME}-neo4j-1 2>/dev/null || echo "not_found")
@@ -98,14 +123,16 @@ jobs:
               sleep 5
             done
 
-            # 7. Restart API so it reconnects to all now-healthy databases
+            # 8. Restart API so it reconnects to all now-healthy databases
             echo "🔄 Restarting API to reconnect to all databases..."
             docker compose --project-name deepkrai-$ENV_NAME restart api
             sleep 10
 
-            # 8. Diagnostics
+            # 9. Diagnostics
             echo "=== CONTAINER STATUS ==="
             docker compose --project-name deepkrai-$ENV_NAME ps
+            echo "=== SHARED SERVICES ==="
+            docker ps --format '{{.Names}} {{.Status}}' | grep shared || true
             echo "=== API CONTAINER LOGS (last 50 lines) ==="
             docker compose --project-name deepkrai-$ENV_NAME logs --tail=50 api
             echo "=== HEALTH CHECK ==="
