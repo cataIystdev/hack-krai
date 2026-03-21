@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"go.uber.org/zap"
 
@@ -535,3 +536,36 @@ func (r *LocationRepository) FindByIDs(ctx context.Context, ids []string) ([]mod
 
 	return locations, nil
 }
+
+// FindByOwnerID возвращает локации, принадлежащие указанному владельцу.
+// Результаты отсортированы по дате создания (новые первые).
+// Используется в контексте онбординга хостов (GET /host/locations).
+func (r *LocationRepository) FindByOwnerID(ctx context.Context, ownerID uuid.UUID) ([]models.Location, error) {
+	query := `SELECT ` + locationColumns + `
+		FROM locations
+		WHERE owner_id = $1
+		ORDER BY created_at DESC
+		LIMIT 100`
+
+	rows, err := r.pg.Pool.Query(ctx, query, ownerID)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка поиска локаций владельца: %w", err)
+	}
+	defer rows.Close()
+
+	var locations []models.Location
+	for rows.Next() {
+		loc, err := scanLocation(rows)
+		if err != nil {
+			return nil, fmt.Errorf("ошибка сканирования локации: %w", err)
+		}
+		locations = append(locations, *loc)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ошибка итерации: %w", err)
+	}
+
+	return locations, nil
+}
+

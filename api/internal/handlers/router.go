@@ -28,6 +28,7 @@ func SetupRoutes(
 	vibeService *services.VibeService,
 	mapService *services.MapService,
 	routeService *services.RouteService,
+	onboardingService *services.OnboardingService,
 	logger *zap.Logger,
 ) {
 	// Корневой маршрут — базовая информация о сервере.
@@ -132,5 +133,15 @@ func SetupRoutes(
 
 		// Trip-aware построение маршрута.
 		tripsProtected.Post("/:id/build-route", routeHandler.BuildTripRoute)
+	}
+
+	// Онбординг хостов — Zero-UI pipeline (GDD Feature 5).
+	// Все эндпоинты требуют JWT и роль host или b2g_admin.
+	if onboardingService != nil {
+		onboardingHandler := NewOnboardingHandler(onboardingService, logger)
+		hostGroup := v1.Group("/host", jwtMiddleware, locationsRBAC)
+		hostGroup.Post("/onboard", onboardingHandler.Onboard)
+		hostGroup.Get("/tasks/:id", onboardingHandler.GetTaskStatus)
+		hostGroup.Get("/locations", onboardingHandler.GetHostLocations)
 	}
 }

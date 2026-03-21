@@ -186,3 +186,181 @@ func extractJSONFromText(text string) (VibeAxes, error) {
 
 	return axes, fmt.Errorf("JSON не найден в тексте ответа")
 }
+
+// onboardingSystemPrompt — системный промпт для извлечения
+// структурированных данных локации из голосового описания хоста.
+// Формат соответствует GDD Feature 5 (Zero-UI Онбординг).
+const onboardingSystemPrompt = `Ты — AI-ассистент туристической платформы КудыТуды. Владелец локации (фермер, хозяин усадьбы и т.д.) описал своё место голосом. Проанализируй текст и извлеки структурированные данные для создания карточки локации.
+
+Верни ТОЛЬКО JSON (без markdown, без пояснений):
+
+{
+  "name_suggestion": "Красивое название локации (придумай на основе описания)",
+  "description_short": "Краткое описание для карточки (1-2 предложения)",
+  "description_literary": "Полное литературное описание (3-7 предложений, переписанное из разговорной речи в приятный текст)",
+  "tags": ["тег1", "тег2", "тег3 и больше"],
+  "category": "категория",
+  "price_per_night": 0,
+  "amenities": ["удобство1", "удобство2 и больше"],
+  "capacity": 0
+}
+
+Правила:
+- name_suggestion: придумай привлекательное название на основе описания, как для туристического сайта
+- description_short: 1-2 предложения, ёмко и привлекательно
+- description_literary: переведи разговорную речь в литературный текст, убери мат, жаргон, сделай приятным для чтения
+- tags: 3-8 тегов на русском (вино, сыр, горы, козы, ферма, тишина, природа, ночлег, дегустация и т.д.)
+- category: одна из: farm, winery, trail, guesthouse, restaurant, camping, excursion, workshop, other
+- price_per_night: цена за ночь в рублях (целое число), 0 если не упоминается
+- amenities: удобства, извлечённые из речи (парковка, Wi-Fi, домики, баня и т.д.)
+- capacity: максимальное количество гостей (целое число), 0 если не упоминается`
+
+// ExtractLocationData извлекает структурированные данные локации
+// из текста транскрипции голосового описания хоста.
+// Используется в pipeline онбординга (GDD Feature 5).
+// В mock-режиме возвращает детерминированные данные "Козья ферма дяди Вани".
+func (l *LLMClient) ExtractLocationData(ctx context.Context, text string) (*LocationData, error) {
+	// Mock-режим.
+	if l.client.IsMock() {
+		l.logger.Info("mock-режим: возвращаем тестовые данные локации")
+		return mockLocationData(), nil
+	}
+
+	l.logger.Info("извлечение данных локации из описания хоста",
+		zap.Int("text_length", len(text)),
+		zap.String("model", l.model),
+	)
+
+	// Формирование запроса.
+	reqBody := ChatCompletionRequest{
+		Model: l.model,
+		Messages: []ChatMessage{
+			{Role: "system", Content: onboardingSystemPrompt},
+			{Role: "user", Content: text},
+		},
+		Temperature: 0.4,
+		MaxTokens:   1500,
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка сериализации запроса LLM: %w", err)
+	}
+
+	// Создание HTTP-запроса.
+	url := l.client.buildURL("chat/completions")
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, fmt.Errorf("ошибка создания HTTP-запроса: %w", err)
+	}
+
+	l.client.setAuthHeaders(req)
+	req.Header.Set("Content-Type", "application/json")
+
+	// Выполнение запроса.
+	resp, err := l.client.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка вызова LLM API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка чтения ответа LLM API: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		l.logger.Error("ошибка LLM API при извлечении данных локации",
+			zap.Int("status_code", resp.StatusCode),
+			zap.String("response", string(respBody)),
+		)
+		return nil, fmt.Errorf("LLM API вернул статус %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	// Парсинг ответа chat/completions.
+	var chatResp ChatCompletionResponse
+	if err := json.Unmarshal(respBody, &chatResp); err != nil {
+		return nil, fmt.Errorf("ошибка парсинга ответа LLM API: %w", err)
+	}
+
+	if len(chatResp.Choices) == 0 {
+		return nil, fmt.Errorf("LLM API вернул пустой массив choices")
+	}
+
+	content := chatResp.Choices[0].Message.Content
+
+	// Парсинг JSON из ответа модели.
+	var data LocationData
+	if err := json.Unmarshal([]byte(content), &data); err != nil {
+		// Попытка найти JSON в ответе (модель может обернуть в markdown).
+		data, err = extractLocationJSONFromText(content)
+		if err != nil {
+			l.logger.Error("не удалось извлечь JSON данных локации из ответа LLM",
+				zap.String("content", content),
+				zap.Error(err),
+			)
+			return nil, fmt.Errorf("ошибка парсинга данных локации из ответа LLM: %w", err)
+		}
+	}
+
+	l.logger.Info("данные локации извлечены",
+		zap.String("name", data.NameSuggestion),
+		zap.String("category", data.Category),
+		zap.Int("tags_count", len(data.Tags)),
+		zap.Int("price", data.PricePerNight),
+	)
+
+	return &data, nil
+}
+
+// LocationData — структурированные данные локации, извлечённые LLM.
+// Повторяет формат из models.OnboardingResult для использования в AI-слое.
+type LocationData struct {
+	// NameSuggestion — предложенное название.
+	NameSuggestion string `json:"name_suggestion"`
+
+	// DescriptionShort — краткое описание.
+	DescriptionShort string `json:"description_short"`
+
+	// DescriptionLiterary — литературное описание.
+	DescriptionLiterary string `json:"description_literary"`
+
+	// Tags — теги.
+	Tags []string `json:"tags"`
+
+	// Category — категория.
+	Category string `json:"category"`
+
+	// PricePerNight — цена за ночь.
+	PricePerNight int `json:"price_per_night"`
+
+	// Amenities — удобства.
+	Amenities []string `json:"amenities,omitempty"`
+
+	// Capacity — вместимость.
+	Capacity int `json:"capacity"`
+}
+
+// extractLocationJSONFromText извлекает JSON LocationData из текста ответа LLM.
+func extractLocationJSONFromText(text string) (LocationData, error) {
+	var data LocationData
+	start := -1
+	depth := 0
+	for i, ch := range text {
+		if ch == '{' {
+			if depth == 0 {
+				start = i
+			}
+			depth++
+		} else if ch == '}' {
+			depth--
+			if depth == 0 && start >= 0 {
+				jsonStr := text[start : i+1]
+				if err := json.Unmarshal([]byte(jsonStr), &data); err == nil {
+					return data, nil
+				}
+			}
+		}
+	}
+	return data, fmt.Errorf("JSON данных локации не найден в тексте ответа")
+}

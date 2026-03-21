@@ -172,6 +172,18 @@ func main() {
 		logger.Warn("Vibe-сервис недоступен: требуется PostgreSQL и Qdrant")
 	}
 
+	// --- 4.7 Сервис онбординга хостов ---
+	var onboardingService *services.OnboardingService
+	if dbManager.Postgres != nil {
+		aiTaskRepo := database.NewAITaskRepository(dbManager.Postgres.Pool, logger)
+		onboardingService = services.NewOnboardingService(
+			voskClient, llmClient, embeddingsClient,
+			aiTaskRepo, locationRepo, vibeRepo, storageService,
+			cfg.AI.DemoLatencyMs, logger,
+		)
+		logger.Info("сервис онбординга инициализирован")
+	}
+
 	// --- 5. Создание HTTP-сервера Fiber ---
 	app := fiber.New(fiber.Config{
 		// ServerHeader — заголовок Server в HTTP-ответах.
@@ -203,7 +215,7 @@ func main() {
 	app.Use(middleware.NewCORS())
 
 	// --- 7. Регистрация маршрутов ---
-	handlers.SetupRoutes(app, dbManager, storageService, authService, jwtService, userRepo, locationService, tripService, vibeService, mapService, routeService, logger)
+	handlers.SetupRoutes(app, dbManager, storageService, authService, jwtService, userRepo, locationService, tripService, vibeService, mapService, routeService, onboardingService, logger)
 
 	// --- 7.5 Bootstrap демо-пользователей ---
 	// Идемпотентное создание предустановленных аккаунтов для тестирования и интеграции.

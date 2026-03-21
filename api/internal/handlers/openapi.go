@@ -996,6 +996,130 @@ func OpenAPISpec(baseURL string) map[string]any {
 					},
 				},
 			},
+
+			// --- Host Onboarding (GDD Feature 5) ---
+			"/api/v1/host/onboard": map[string]any{
+				"post": map[string]any{
+					"tags":        []string{"Онбординг хостов"},
+					"summary":     "Запуск Zero-UI онбординга хоста",
+					"description": "Принимает голосовое описание локации (multipart audio) и запускает AI-pipeline:\n1. STT — распознавание речи\n2. LLM — извлечение структурированных данных (название, описание, теги, цена, удобства)\n3. Embedding — генерация vibe-вектора локации\n4. Создание черновика локации в PostgreSQL\n\nТребуется роль host или b2g_admin.",
+					"operationId": "hostOnboard",
+					"security":    []map[string]any{{"BearerAuth": []string{}}},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"multipart/form-data": map[string]any{
+								"schema": map[string]any{
+									"type": "object",
+									"properties": map[string]any{
+										"audio": map[string]any{
+											"type":        "string",
+											"format":      "binary",
+											"description": "Голосовое описание локации (webm/wav/mp3/ogg).",
+										},
+										"media_urls": map[string]any{
+											"type":        "array",
+											"items":       map[string]any{"type": "string"},
+											"description": "URL медиафайлов (фото/видео), предварительно загруженных через /media/upload.",
+										},
+										"latitude": map[string]any{
+											"type":        "number",
+											"description": "Широта локации.",
+										},
+										"longitude": map[string]any{
+											"type":        "number",
+											"description": "Долгота локации.",
+										},
+										"address": map[string]any{
+											"type":        "string",
+											"description": "Адрес локации.",
+										},
+									},
+									"required": []string{"audio"},
+								},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Онбординг завершён (или ошибка pipeline).",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{
+										"$ref": "#/components/schemas/OnboardResponse",
+									},
+								},
+							},
+						},
+						"400": map[string]any{"description": "Отсутствует аудиофайл."},
+						"401": map[string]any{"description": "Отсутствует или невалидный токен."},
+						"403": map[string]any{"description": "Недостаточно прав (требуется роль host или b2g_admin)."},
+					},
+				},
+			},
+			"/api/v1/host/tasks/{id}": map[string]any{
+				"get": map[string]any{
+					"tags":        []string{"Онбординг хостов"},
+					"summary":     "Статус задачи онбординга",
+					"description": "Возвращает текущий статус и прогресс задачи AI-обработки. Для polling-based UI.",
+					"operationId": "getTaskStatus",
+					"security":    []map[string]any{{"BearerAuth": []string{}}},
+					"parameters": []map[string]any{
+						{
+							"name":        "id",
+							"in":          "path",
+							"required":    true,
+							"description": "UUID задачи.",
+							"schema":      map[string]any{"type": "string", "format": "uuid"},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Статус задачи.",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{
+										"$ref": "#/components/schemas/OnboardResponse",
+									},
+								},
+							},
+						},
+						"404": map[string]any{"description": "Задача не найдена."},
+						"401": map[string]any{"description": "Отсутствует или невалидный токен."},
+					},
+				},
+			},
+			"/api/v1/host/locations": map[string]any{
+				"get": map[string]any{
+					"tags":        []string{"Онбординг хостов"},
+					"summary":     "Локации текущего хоста",
+					"description": "Возвращает список локаций, принадлежащих текущему хосту (owner_id = user_id), отсортированных по дате создания.",
+					"operationId": "getHostLocations",
+					"security":    []map[string]any{{"BearerAuth": []string{}}},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Список локаций хоста.",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{
+										"type": "object",
+										"properties": map[string]any{
+											"success": map[string]any{"type": "boolean"},
+											"data": map[string]any{
+												"type":  "array",
+												"items": map[string]any{"$ref": "#/components/schemas/Location"},
+											},
+											"total": map[string]any{"type": "integer"},
+										},
+									},
+								},
+							},
+						},
+						"401": map[string]any{"description": "Отсутствует или невалидный токен."},
+						"403": map[string]any{"description": "Недостаточно прав."},
+					},
+				},
+			},
 		},
 		"components": map[string]any{
 			"schemas": map[string]any{

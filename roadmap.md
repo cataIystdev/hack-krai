@@ -1139,7 +1139,7 @@ go test ./internal/models/ -- ALL PASS
 
 ### Goal
 
-Следующий большой product slice после tourist core.
+Zero-UI онбординг для владельцев локаций. Фермер записывает голосовое описание → AI создаёт черновик локации.
 
 ### GDD alignment
 
@@ -1150,23 +1150,48 @@ go test ./internal/models/ -- ALL PASS
 
 ### Current status
 
-❌ Не реализовано.
+✅ Реализовано (2026-03-21).
 
-### Deliverables
+### Что реализовано
 
-1. `POST /api/v1/host/onboard`
-2. task/status model
-3. parsing voice into structured location
-4. media upload hookup
-5. generated location draft
+1. **Миграция 010**: таблица `ai_tasks` (id, user_id, type, status, progress, input_data JSONB, output_data JSONB, error, timestamps).
+2. **Модели** (`models/onboarding.go`): AITask, OnboardingInputData, OnboardingOutputData, OnboardingResult, OnboardResponse, ProgressMessage().
+3. **LLM Onboarding Prompt** (`ai/llm.go`): метод `ExtractLocationData()` с отдельным system prompt для извлечения name, description, tags, price, category, amenities, capacity из транскрипции.
+4. **Репозиторий** (`database/ai_task_repository.go`): Create, GetByID, UpdateProgress, Complete, Fail, FindByUserID.
+5. **Репозиторий** (`database/location_repository.go`): добавлен FindByOwnerID.
+6. **Сервис** (`services/onboarding.go`): полный pipeline STT→LLM→Embedding→Location draft; GetTaskStatus; GetHostLocations.
+7. **Обработчик** (`handlers/onboarding.go`): POST /host/onboard (multipart), GET /host/tasks/:id, GET /host/locations.
+8. **Router**: host group с JWT + RBAC (host, b2g_admin).
+9. **OpenAPI**: 3 новых эндпоинта документированы.
+10. **Demo mock**: «Козья ферма дяди Вани» с controlled latency.
 
-### Demo policy
+### Pipeline
 
-Можно сделать staged:
+```
+Голос → Vosk STT → LLM (onboardingSystemPrompt) → Structured data → Embedding → Qdrant → Location draft (PostgreSQL)
+```
 
-1. demo-sync fake progress;
-2. async task real contract;
-3. real AI/media internals.
+### Баги и исправления
+
+- **Lint**: `LocationRepository.FindByOwnerID` требовал импорт `uuid` — добавлен.
+- **API signatures**: `StorageService.Upload`, `VibeRepository.UpsertVibeVector`, `LocationRepository.Create` — сервис переписан под актуальные сигнатуры.
+- **OpenAPI**: синтаксическая ошибка из-за преждевременного закрытия paths map — исправлена.
+
+### Тесты
+
+- `go build ./...` — OK
+- `models/onboarding_test.go`: 4 теста (TaskType, TaskStatus, ProgressMessage, JSON) — PASS
+- Middleware: 8 тестов — PASS
+- Services: все тесты — PASS
+
+### Acceptance Criteria
+
+- [x] Pipeline: STT → LLM → Embedding → Location draft
+- [x] POST /host/onboard (JWT + RBAC host/b2g_admin)
+- [x] GET /host/tasks/{id} (polling progress)
+- [x] GET /host/locations (локации хоста)
+- [x] Mock-режим: «Козья ферма дяди Вани»
+- [x] Миграция 010 автоматически при запуске
 
 ---
 
