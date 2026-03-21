@@ -121,7 +121,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("AI_BASE_URL", "https://api.onlysq.ru/ai/openai/")
 	v.SetDefault("AI_API_KEY", "")
 	v.SetDefault("AI_WHISPER_MODEL", "whisper-1")
-	v.SetDefault("AI_LLM_MODEL", "gpt-5.1")
+	v.SetDefault("AI_LLM_MODEL", "gpt-4o-mini")
 	v.SetDefault("AI_EMBEDDINGS_MODEL", "text-embedding-3-large")
 	v.SetDefault("VOSK_HOST", "localhost")
 	v.SetDefault("VOSK_PORT", 2700)

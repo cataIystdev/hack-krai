@@ -37,15 +37,16 @@ Backend планируется так, чтобы:
 Первый съемочный контур покрывает подмножество GDD:
 
 1. GDD Feature 1: Умное планирование поездки
+
    - точка входа с 2 CTA
    - Voice-to-Vibe
    - Vibe passport
    - базовые рекомендации
-
 2. GDD Feature 2: Интерактивная 3D-карта Краснодарского края
-   - только demo map / recommended points layer
 
+   - только demo map / recommended points layer
 3. GDD Feature 3: Immersive 3D-экскурсии
+
    - только location detail / preview shell
 
 ### Покрытие на этапе MVP-core
@@ -53,16 +54,17 @@ Backend планируется так, чтобы:
 Следующий обязательный слой:
 
 1. GDD Feature 1 полностью в MVP-ядре:
+
    - trip details
    - group invite/join
    - recommendation flow
-
 2. GDD Feature 2 в MVP-версии:
+
    - map endpoints
    - location selection
    - route preview
-
 3. Частичный GDD Feature 4:
+
    - базовый route build без полной live-перестройки
 
 ### Полное покрытие GDD
@@ -83,17 +85,17 @@ Backend планируется так, чтобы:
 
 ## Связь roadmap с фичами GDD
 
-| Фича GDD                                | Фазы roadmap бэкенда      |
-| --------------------------------------- | ------------------------- |
-| Feature 1. Smart trip planning          | 0, 1, 2, 3, 5, 6, 7, 8, 9 |
-| Feature 2. 3D map                       | 4, 7, 12, 15              |
-| Feature 3. 3D tours / splat             | 5, 10, 15                 |
-| Feature 4. Live routing & storytelling  | 7, 12, 15                 |
-| Feature 5. Host onboarding              | 10, 15                    |
-| Feature 6. Booking                      | 11, 15                    |
-| Feature 7. Hidden Gems / karma          | 13, 15                    |
-| Feature 8. Analytics / B2G              | 14, 15                    |
-| Feature 9. Offline mode backend support | 12, 14, 15                |
+| Фича GDD                            | Фазы roadmap бэкенда |
+| --------------------------------------- | ------------------------------- |
+| Feature 1. Smart trip planning          | 0, 1, 2, 3, 5, 6, 7, 8, 9       |
+| Feature 2. 3D map                       | 4, 7, 12, 15                    |
+| Feature 3. 3D tours / splat             | 5, 10, 15                       |
+| Feature 4. Live routing & storytelling  | 7, 12, 15                       |
+| Feature 5. Host onboarding              | 10, 15                          |
+| Feature 6. Booking                      | 11, 15                          |
+| Feature 7. Hidden Gems / karma          | 13, 15                          |
+| Feature 8. Analytics / B2G              | 14, 15                          |
+| Feature 9. Offline mode backend support | 12, 14, 15                      |
 
 ---
 
@@ -102,21 +104,22 @@ Backend планируется так, чтобы:
 ### Уже реализовано
 
 1. App/server foundation:
+
    - Fiber app bootstrap;
    - config;
    - logger;
    - middleware;
    - graceful shutdown.
-
 2. Infrastructure connection layer:
+
    - PostgreSQL;
    - Redis;
    - Qdrant;
    - Neo4j;
    - ClickHouse;
    - MinIO.
-
 3. Auth/profile:
+
    - register;
    - login;
    - refresh;
@@ -124,53 +127,53 @@ Backend планируется так, чтобы:
    - RBAC middleware;
    - `GET /api/v1/profile/me`;
    - `PUT /api/v1/profile/me`.
-
 4. Locations:
+
    - migrations (001-006);
    - public list/detail;
    - protected create/update/delete;
    - PostGIS search foundation;
    - `GET /api/v1/locations/{id}/splat` -- ленивая загрузка 3D;
    - `gallery_urls` для массива фотографий.
-
 5. Trips:
+
    - create;
    - detail;
    - invite refresh;
    - join;
    - members list.
-
 6. Vibe:
+
    - voice profiling;
    - scenes;
    - swipe;
    - finalize;
    - AI mock mode;
    - Qdrant integration.
-
 7. Map API:
+
    - `GET /api/v1/map/locations` -- 3 режима (bbox, demo, hybrid);
    - 4 curated demo-профиля (calm_wine_mountains, active_adventure, family_kids, gastro_cultural);
    - обогащение рекомендациями из Qdrant.
-
 8. Route:
-   - `POST /api/v1/route/build` -- построение маршрутов.
 
+   - `POST /api/v1/route/build` -- построение маршрутов.
 9. Media/docs:
+
    - media upload;
    - health endpoint;
    - OpenAPI;
    - Scalar UI.
-
 10. Schema/migrations:
+
     - 001: users;
     - 002: locations;
     - 003: trips/trip_members;
     - 004: swipe_scenes;
     - 005: preview_image;
     - 006: gallery_urls.
-
 11. Seed-данные:
+
     - 20 seed-локаций Краснодарского края;
     - seed-хост и demo-турист;
     - загружено на dev и test-catalyst серверы.
@@ -215,13 +218,14 @@ Backend roadmap покрывает полный demo-first контур:
 Первым должны быть готовы:
 
 1. Скринкаст 30 секунд:
+
    - стартовый экран с 2 CTA;
    - voice input + состояние "ИИ думает";
    - vibe passport;
    - 3D-карта / карта с рекомендованными точками;
    - карточка локации / 3D-preview + CTA "Собрать маршрут".
-
 2. Скриншоты для презентации:
+
    - vibe passport;
    - 3D-карта с рекомендациями;
    - карточка локации или 3D-экскурсия.
@@ -374,10 +378,11 @@ Backend roadmap покрывает полный demo-first контур:
 Все seed-данные подготовлены и загружены на серверы (dev + test-catalyst):
 
 1. **Seed users:**
+
    - `seed-host@deepkrai.ru` (host, owner_id: `a0000000-...0001`);
    - `demo-tourist@deepkrai.ru` (tourist).
-
 2. **Seed locations -- 20 точек Краснодарского края:**
+
    - Винодельня Абрау-Дюрсо (winery, red density);
    - Винодельня Лефкадия (winery, yellow);
    - Козья ферма дяди Вани (farm, green, Hidden Gem);
@@ -399,11 +404,8 @@ Backend roadmap покрывает полный demo-first контур:
    - Грязевой вулкан Шуго (nature, yellow);
    - Лысая гора Горячий Ключ (trail, yellow).
    - Все точки с полными описаниями, тегами, координатами, категориями.
-
 3. **Seed swipe scenes:** 6 сцен (миграция 004).
-
 4. **Seed recommendation bundles:** 4 curated demo-профиля (по 7 рекомендаций каждый), встроенные в MapService.
-
 5. **Загрузка seed:** SQL-скрипт `/tmp/seed_locations.sql` выполнен на обоих серверах.
 
 ### Файлы реализации
@@ -442,15 +444,14 @@ voice input -> AI thinking -> vibe passport.
 Полный pipeline голосового профилирования реализован:
 
 1. **`POST /api/v1/profile/voice`:**
+
    - принимает audio (multipart/form-data);
    - STT (Whisper mock/real) -> транскрипция;
    - LLM extraction -> axes (adventure, culture, nature, social, comfort), summary, tags;
    - Embeddings -> 384-мерный вектор;
    - Qdrant upsert + user vibe_vector_id persistence;
    - возвращает: transcription, axes, extracted_tags, vibe_summary, vector_id.
-
 2. **Demo mode:** детерминированный ответ при отсутствии API-ключей или mock-режиме. Frontend не различает mock/real.
-
 3. **Persist profile result:** вектор сохраняется в Qdrant, ссылка привязывается к user profile.
 
 ### Файлы реализации
@@ -535,15 +536,15 @@ scenes -> swipe -> finalize -> recommendations.
 `GET /api/v1/map/locations` реализован с тремя режимами:
 
 1. **Bbox** (по умолчанию) -- пространственный поиск через PostGIS ST_Within.
-   - Параметры: `min_lat`, `max_lat`, `min_lon`, `max_lon`.
 
+   - Параметры: `min_lat`, `max_lat`, `min_lon`, `max_lon`.
 2. **Demo** (`?demo=true&profile=...`) -- curated набор с предустановленными рекомендациями.
+
    - 4 профиля (по 7 рекомендаций каждый):
      - `calm_wine_mountains` -- горы, вино, тишина;
      - `active_adventure` -- каньоны, рафтинг, горы;
      - `family_kids` -- фермы, дети, природа;
      - `gastro_cultural` -- гастрономия, культура, история.
-
 3. **Hybrid** -- при наличии JWT обогащает точки скорами из Qdrant.
 
 **MapPoint DTO:** id, name, lat/lon, category, density_level, preview_image_url, description_short, is_recommended, recommendation_score.
@@ -591,6 +592,7 @@ scenes -> swipe -> finalize -> recommendations.
 ### Реализация
 
 1. **`GET /api/v1/locations/{id}`** -- полный detail payload:
+
    - title (name), slug;
    - category, tags;
    - description_short, description_full;
@@ -601,13 +603,11 @@ scenes -> swipe -> finalize -> recommendations.
    - splat_url (3D Gaussian Splatting);
    - density_level, access_level;
    - child_friendly, address.
-
 2. **`GET /api/v1/locations/{id}/splat`** -- ленивая загрузка 3D-сцены:
+
    - location_id, location_name, has_splat, splat_url;
    - отдельный endpoint для фронтенда -- тяжёлый 3D-контент не включён в основной payload.
-
 3. **Миграция 006** (`gallery_urls TEXT[]`) -- массив URL дополнительных фотографий.
-
 4. **`POST /api/v1/trips`** -- создание trip (реализовано в фазе 3).
 
 ### Файлы реализации
@@ -647,6 +647,7 @@ scenes -> swipe -> finalize -> recommendations.
 ### Обязательные исправления по текущему code review
 
 1. Media upload panic risk:
+
    - `POST /api/v1/media/upload` регистрируется всегда;
    - при `storage == nil` обработчик упадет на вызове `h.storage.Upload(...)`.
    - Почему это плохо:
@@ -654,8 +655,8 @@ scenes -> swipe -> finalize -> recommendations.
      - внешняя инфраструктурная проблема начинает ломать само приложение;
      - на review это выглядит как отсутствие defensive handling для опциональной зависимости.
    - **Исправлено:** Nil-guard в начале `Upload()` — возвращает 503 Service Unavailable с сообщением "хранилище медиафайлов временно недоступно".
-
 2. Trip join race / overbooking risk:
+
    - `CountMembers()` и `AddMember()` выполняются раздельно;
    - при параллельных join возможно превысить `group_size`.
    - Почему это плохо:
@@ -664,8 +665,8 @@ scenes -> swipe -> finalize -> recommendations.
      - на review это классический признак отсутствия транзакционной защиты важного ограничения.
    - **Частично исправлено:** Добавлен `AddMemberAtomic()` — `INSERT ... SELECT WHERE (SELECT count(\*) ...) < maxGroupSize`.
    - **Оставшийся риск:** это лучше, чем два раздельных запроса, но всё ещё не даёт строгой гарантии против overbooking при конкурентных транзакциях. Нужен отдельный post-review fix в trip repository / transaction model.
-
 3. Swipe logic mismatch:
+
    - scene vectors читаются из `user_vibes`;
    - это не совпадает с моделью swipe scenes и делает swipe-flow хрупким/ложным.
    - Почему это плохо:
@@ -673,8 +674,8 @@ scenes -> swipe -> finalize -> recommendations.
      - текущий flow может работать только за счет специальных seed-данных или случайно;
      - на review это выглядит как несоответствие реализации продуктовой логике GDD.
    - **Исправлено:** Новая коллекция `scene_vibes` в Qdrant. `SeedSceneVectors()` пишет в `scene_vibes`, `Swipe()` читает сцену из `scene_vibes`, пользователя из `user_vibes`.
-
 4. Voice profiling memory pressure:
+
    - аудио читается в память;
    - потом снова буферизуется/конвертируется через ffmpeg;
    - при больших файлах и нескольких одновременных запросах это опасно.
@@ -683,8 +684,8 @@ scenes -> swipe -> finalize -> recommendations.
      - при нескольких одновременных запросах можно быстро упереться в ресурсы;
      - на review это не "микрооптимизация", а реальный operational risk.
    - **Исправлено:** `io.LimitReader(file, 25MB+1)` — ограничение аудио 25 МБ. При превышении — 413 Payload Too Large.
-
 5. Health endpoint cost:
+
    - каждый запрос к health синхронно пингует все внешние сервисы;
    - для production probes и нагрузочного сценария это слишком тяжело.
    - Почему это плохо:
@@ -695,13 +696,13 @@ scenes -> swipe -> finalize -> recommendations.
 
 ### Реализация
 
-| Исправление  | Подход                   | Файлы                                                                               |
-| ------------ | ------------------------ | ----------------------------------------------------------------------------------- |
-| Media panic  | Nil-guard → 503          | `handlers/media.go`, `handlers/media_test.go`                                       |
-| Trip race    | `INSERT WHERE count < N` | `database/trip_repository.go`, `services/trip.go`                                   |
-| Swipe source | Коллекция `scene_vibes`  | `database/vibe_repository.go`, `database/qdrant_collections.go`, `services/vibe.go` |
-| Voice memory | `io.LimitReader` 25 МБ   | `handlers/vibe.go`                                                                  |
-| Health cost  | Live/Ready split         | `handlers/health.go`, `handlers/router.go`, `handlers/openapi.go`                   |
+| Исправление | Подход                       | Файлы                                                                                |
+| ---------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------- |
+| Media panic            | Nil-guard → 503                   | `handlers/media.go`, `handlers/media_test.go`                                         |
+| Trip race              | `INSERT WHERE count < N`         | `database/trip_repository.go`, `services/trip.go`                                     |
+| Swipe source           | Коллекция `scene_vibes` | `database/vibe_repository.go`, `database/qdrant_collections.go`, `services/vibe.go` |
+| Voice memory           | `io.LimitReader` 25 МБ         | `handlers/vibe.go`                                                                      |
+| Health cost            | Live/Ready split                   | `handlers/health.go`, `handlers/router.go`, `handlers/openapi.go`                   |
 
 ### Метрики
 
@@ -751,14 +752,14 @@ scenes -> swipe -> finalize -> recommendations.
 
 При сравнении кода с GDD (строки 217-256) выявлены следующие проблемы:
 
-| Элемент                               | Статус до Phase 6 | Проблема                                                                                       |
-| ------------------------------------- | :---------------: | ---------------------------------------------------------------------------------------------- |
-| `format` (day_trip/weekend/multi_day) |        ❌         | Отсутствовал в DB, модели, DTO, OpenAPI                                                        |
-| `vibe_vector_id` (ссылка на Qdrant)   |        ❌         | Отсутствовал в модели Trip и CreateTripRequest (был только `merged_vibe_vector_id` для группы) |
-| `PUT /api/v1/trips/{id}`              |        ❌         | Не было endpoint'а для обновления (фронт не мог редактировать поездку)                         |
-| `TripWithMembers` (OpenAPI)           |        ❌         | Схема не была определена в OpenAPI, хотя использовалась в ответах                              |
-| `UpdateTripRequest` DTO               |        ❌         | Не существовал                                                                                 |
-| Дублирование Scan в репозитории       |        ⚠️         | 4 метода (FindByID, FindByInviteToken, FindByUserID, Create) дублировали одинаковый Scan       |
+| Элемент                                          | Статус до Phase 6 | Проблема                                                                                                                       |
+| ------------------------------------------------------- | :-----------------------: | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `format` (day_trip/weekend/multi_day)                 |            ❌            | Отсутствовал в DB, модели, DTO, OpenAPI                                                                             |
+| `vibe_vector_id` (ссылка на Qdrant)           |            ❌            | Отсутствовал в модели Trip и CreateTripRequest (был только `merged_vibe_vector_id` для группы) |
+| `PUT /api/v1/trips/{id}`                              |            ❌            | Не было endpoint'а для обновления (фронт не мог редактировать поездку)               |
+| `TripWithMembers` (OpenAPI)                           |            ❌            | Схема не была определена в OpenAPI, хотя использовалась в ответах                      |
+| `UpdateTripRequest` DTO                               |            ❌            | Не существовал                                                                                                            |
+| Дублирование Scan в репозитории |           ⚠️           | 4 метода (FindByID, FindByInviteToken, FindByUserID, Create) дублировали одинаковый Scan                    |
 
 ### Что сделано
 
@@ -904,17 +905,17 @@ scenes -> swipe -> finalize -> recommendations.
 
 **Файлы:**
 
-| Файл | Действие | Описание |
-|------|----------|----------|
-| `migrations/008_create_routes_tables.sql` | NEW | Таблицы routes, route_points |
-| `models/route.go` | REWRITE | +BuildTripRouteRequest, +Route, +RoutePointDB, расширены RoutePreview/RoutePoint |
-| `models/route_test.go` | REWRITE | 17 тестов: Validate, NormalizeDefaults, Constants |
-| `database/route_repository.go` | NEW | Create, FindByID, FindPointsByRouteID, FindByTripID |
-| `services/route.go` | REWRITE | +BuildTripRoute, +tripRepo/routeRepo/vibeRepo зависимости |
-| `handlers/route.go` | REWRITE | +BuildTripRoute handler |
-| `handlers/router.go` | MODIFY | +POST /:id/build-route |
-| `cmd/api/main.go` | MODIFY | tripRepo/routeRepo вынесены, переданы в RouteService |
-| `handlers/openapi.go` | MODIFY | +BuildTripRouteRequest, расширены RoutePreview/RoutePoint schemas |
+| Файл                                    | Действие | Описание                                                                          |
+| ------------------------------------------- | ---------------- | ----------------------------------------------------------------------------------------- |
+| `migrations/008_create_routes_tables.sql` | NEW              | Таблицы routes, route_points                                                       |
+| `models/route.go`                         | REWRITE          | +BuildTripRouteRequest, +Route, +RoutePointDB, расширены RoutePreview/RoutePoint |
+| `models/route_test.go`                    | REWRITE          | 17 тестов: Validate, NormalizeDefaults, Constants                                   |
+| `database/route_repository.go`            | NEW              | Create, FindByID, FindPointsByRouteID, FindByTripID                                       |
+| `services/route.go`                       | REWRITE          | +BuildTripRoute, +tripRepo/routeRepo/vibeRepo зависимости                      |
+| `handlers/route.go`                       | REWRITE          | +BuildTripRoute handler                                                                   |
+| `handlers/router.go`                      | MODIFY           | +POST /:id/build-route                                                                    |
+| `cmd/api/main.go`                         | MODIFY           | tripRepo/routeRepo вынесены, переданы в RouteService                     |
+| `handlers/openapi.go`                     | MODIFY           | +BuildTripRouteRequest, расширены RoutePreview/RoutePoint schemas                |
 
 #### 7C. Vibe integration — ✅ DONE
 
@@ -987,6 +988,7 @@ go test ./internal/models/ -v — 17/17 PASS (route tests)
 **Проблема:** `AddMemberAtomic` использовал `INSERT...SELECT WHERE count < N` без блокировки строки, что допускало race condition при параллельных join.
 
 **Решение:** Переписан на транзакционный подход:
+
 1. `SELECT ... FOR UPDATE` на trips row (exclusive row lock)
 2. `COUNT(*)` текущих членов
 3. Проверка дубликатов: user_id для авторизованных, `LOWER(display_name)` для анонимных
@@ -1004,6 +1006,7 @@ go test ./internal/models/ -v — 17/17 PASS (route tests)
 **Проблема:** Authenticated join не связывал `trip_member` с данными из `users`.
 
 **Решение:**
+
 - При auth join: `display_name` и `vibe_vector_id` подтягиваются из профиля users
 - `user_id` всегда привязывается к `trip_member`
 - Fallback на данные из запроса, если профиль недоступен
@@ -1013,6 +1016,7 @@ go test ./internal/models/ -v — 17/17 PASS (route tests)
 **Проблема:** Stub, возвращавший nil.
 
 **Решение:**
+
 1. Загрузка vibe-векторов всех участников из Qdrant (CollectionUserVibes)
 2. Взвешенное среднее: детские профили = вес 1.2x
 3. L2-нормализация
@@ -1023,22 +1027,22 @@ go test ./internal/models/ -v — 17/17 PASS (route tests)
 
 #### Duplicate Prevention
 
-| Сценарий | Механизм |
-|----------|----------|
-| Авторизованный | UNIQUE INDEX `(trip_id, user_id) WHERE user_id IS NOT NULL` (миграция 003) |
-| Анонимный | UNIQUE INDEX `(trip_id, LOWER(display_name)) WHERE user_id IS NULL` (миграция 009) |
+| Сценарий             | Механизм                                                                             |
+| ---------------------------- | -------------------------------------------------------------------------------------------- |
+| Авторизованный | UNIQUE INDEX `(trip_id, user_id) WHERE user_id IS NOT NULL` (миграция 003)         |
+| Анонимный           | UNIQUE INDEX `(trip_id, LOWER(display_name)) WHERE user_id IS NULL` (миграция 009) |
 
 ### Файлы
 
-| Файл | Действие | Описание |
-|------|----------|----------|
-| `migrations/009_group_trip_hardening.sql` | NEW | Unique index для анонимных участников |
-| `database/trip_repository.go` | MODIFY | Транзакционный AddMemberAtomic + IsMember + FindMemberByUserID |
-| `services/trip.go` | REWRITE | Privacy, auth-flex Join, MergeGroupVibes, vibeRepo |
-| `handlers/trip.go` | MODIFY | GetByID/ListMembers передают userID |
-| `cmd/api/main.go` | MODIFY | vibeRepo в NewTripService |
-| `handlers/openapi.go` | MODIFY | 403 на GET trip/members, обновлён POST join |
-| `docs/phase8/group_trip_mvp.md` | NEW | Документация Phase 8 |
+| Файл                                    | Действие | Описание                                                             |
+| ------------------------------------------- | ---------------- | ---------------------------------------------------------------------------- |
+| `migrations/009_group_trip_hardening.sql` | NEW              | Unique index для анонимных участников                  |
+| `database/trip_repository.go`             | MODIFY           | Транзакционный AddMemberAtomic + IsMember + FindMemberByUserID |
+| `services/trip.go`                        | REWRITE          | Privacy, auth-flex Join, MergeGroupVibes, vibeRepo                           |
+| `handlers/trip.go`                        | MODIFY           | GetByID/ListMembers передают userID                                  |
+| `cmd/api/main.go`                         | MODIFY           | vibeRepo в NewTripService                                                   |
+| `handlers/openapi.go`                     | MODIFY           | 403 на GET trip/members, обновлён POST join                        |
+| `docs/phase8/group_trip_mvp.md`           | NEW              | Документация Phase 8                                             |
 
 ### Test results
 
@@ -1082,16 +1086,17 @@ go test ./internal/models/ -v -- ALL PASS
 
 #### Endpoint Audit (4 проблемы найдены и исправлены)
 
-| Проблема | Описание | Решение |
-|----------|----------|---------|
-| media/upload без auth | POST /media/upload был публичным | Перемещён под JWT middleware |
-| locations без RBAC | PUT/DELETE имели JWT, но без RequireRole | Добавлен RequireRole(host, b2g_admin) |
-| Join без OptionalJWT | c.Locals("user_id") всегда nil | Создан OptionalJWTAuth middleware |
-| locations POST двойной JWT | POST имел jwtMiddleware дважды | Убрано дублирование |
+| Проблема                  | Описание                                   | Решение                                |
+| --------------------------------- | -------------------------------------------------- | --------------------------------------------- |
+| media/upload без auth          | POST /media/upload был публичным       | Перемещён под JWT middleware      |
+| locations без RBAC             | PUT/DELETE имели JWT, но без RequireRole | Добавлен RequireRole(host, b2g_admin) |
+| Join без OptionalJWT           | c.Locals("user_id") всегда nil               | Создан OptionalJWTAuth middleware       |
+| locations POST двойной JWT | POST имел jwtMiddleware дважды           | Убрано дублирование         |
 
 #### OptionalJWTAuth Middleware
 
 Новый middleware для auth-flex эндпоинтов:
+
 - Если JWT передан и валиден — user_id/role в Locals
 - Если JWT отсутствует — пропускает без ошибки
 - Если JWT невалиден — пропускает без ошибки (логирует Debug)
@@ -1100,21 +1105,22 @@ go test ./internal/models/ -v -- ALL PASS
 #### Demo User Bootstrap
 
 Идемпотентное создание при запуске API:
+
 - `demo@deepkrai.ru` / `demo1234` / tourist
 - `host@deepkrai.ru` / `host1234` / host
 - При повторном запуске ничего не создаёт
 
 ### Файлы
 
-| Файл | Действие | Описание |
-|------|----------|----------|
-| `middleware/optional_jwt.go` | NEW | OptionalJWTAuth middleware |
-| `middleware/optional_jwt_test.go` | NEW | 4 тестовых сценария |
-| `services/bootstrap.go` | NEW | Демо-пользователи при запуске |
-| `handlers/router.go` | MODIFY | Authorization matrix fix |
-| `cmd/api/main.go` | MODIFY | Bootstrap вызов |
-| `handlers/openapi.go` | MODIFY | Security и RBAC descriptions |
-| `docs/phase9/auth_hardening.md` | NEW | Полная документация + Authorization matrix |
+| Файл                            | Действие | Описание                                             |
+| ----------------------------------- | ---------------- | ------------------------------------------------------------ |
+| `middleware/optional_jwt.go`      | NEW              | OptionalJWTAuth middleware                                   |
+| `middleware/optional_jwt_test.go` | NEW              | 4 тестовых сценария                          |
+| `services/bootstrap.go`           | NEW              | Демо-пользователи при запуске      |
+| `handlers/router.go`              | MODIFY           | Authorization matrix fix                                     |
+| `cmd/api/main.go`                 | MODIFY           | Bootstrap вызов                                         |
+| `handlers/openapi.go`             | MODIFY           | Security и RBAC descriptions                                |
+| `docs/phase9/auth_hardening.md`   | NEW              | Полная документация + Authorization matrix |
 
 ### Test results
 
@@ -1186,12 +1192,12 @@ Zero-UI онбординг для владельцев локаций. Ферм�
 
 ### Acceptance Criteria
 
-- [x] Pipeline: STT → LLM → Embedding → Location draft
-- [x] POST /host/onboard (JWT + RBAC host/b2g_admin)
-- [x] GET /host/tasks/{id} (polling progress)
-- [x] GET /host/locations (локации хоста)
-- [x] Mock-режим: «Козья ферма дяди Вани»
-- [x] Миграция 010 автоматически при запуске
+- [X] Pipeline: STT → LLM → Embedding → Location draft
+- [X] POST /host/onboard (JWT + RBAC host/b2g_admin)
+- [X] GET /host/tasks/{id} (polling progress)
+- [X] GET /host/locations (локации хоста)
+- [X] Mock-режим: «Козья ферма дяди Вани»
+- [X] Миграция 010 автоматически при запуске
 
 ---
 
@@ -1365,16 +1371,17 @@ Zero-UI онбординг для владельцев локаций. Ферм�
 ### P0 -- обязательно до уверенного MVP
 
 1. **Trip privacy and access control**
+
    - закрыть несанкционированный доступ к `GET /api/v1/trips/{id}` и `GET /api/v1/trips/{id}/members`;
    - внедрить resource-level authorization в service layer;
    - формализовать matrix доступа: creator / member / admin / invite-only.
-
 2. **Join auth contract**
+
    - разделить и явно описать public invite join и authenticated join;
    - убрать зависимость handler/service от `user_id` в контексте там, где JWT middleware не применяется;
    - гарантировать корректную привязку `trip_member.user_id` для залогиненных участников.
-
 3. **Concurrency-safe trip capacity**
+
    - заменить текущую count-based вставку на решение, которое реально держит инвариант `members <= group_size` под параллельной нагрузкой;
    - покрыть этот сценарий интеграционным concurrency-тестом.
 
