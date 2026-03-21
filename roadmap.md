@@ -83,17 +83,17 @@ Backend планируется так, чтобы:
 
 ## Связь roadmap с фичами GDD
 
-| Фича GDD | Фазы roadmap бэкенда |
-| --- | --- |
-| Feature 1. Smart trip planning | 0, 1, 2, 3, 5, 6, 7, 8, 9 |
-| Feature 2. 3D map | 4, 7, 12, 15 |
-| Feature 3. 3D tours / splat | 5, 10, 15 |
-| Feature 4. Live routing & storytelling | 7, 12, 15 |
-| Feature 5. Host onboarding | 10, 15 |
-| Feature 6. Booking | 11, 15 |
-| Feature 7. Hidden Gems / karma | 13, 15 |
-| Feature 8. Analytics / B2G | 14, 15 |
-| Feature 9. Offline mode backend support | 12, 14, 15 |
+| Фича GDD                                | Фазы roadmap бэкенда      |
+| --------------------------------------- | ------------------------- |
+| Feature 1. Smart trip planning          | 0, 1, 2, 3, 5, 6, 7, 8, 9 |
+| Feature 2. 3D map                       | 4, 7, 12, 15              |
+| Feature 3. 3D tours / splat             | 5, 10, 15                 |
+| Feature 4. Live routing & storytelling  | 7, 12, 15                 |
+| Feature 5. Host onboarding              | 10, 15                    |
+| Feature 6. Booking                      | 11, 15                    |
+| Feature 7. Hidden Gems / karma          | 13, 15                    |
+| Feature 8. Analytics / B2G              | 14, 15                    |
+| Feature 9. Offline mode backend support | 12, 14, 15                |
 
 ---
 
@@ -126,10 +126,12 @@ Backend планируется так, чтобы:
    - `PUT /api/v1/profile/me`.
 
 4. Locations:
-   - migrations;
+   - migrations (001-006);
    - public list/detail;
    - protected create/update/delete;
-   - PostGIS search foundation.
+   - PostGIS search foundation;
+   - `GET /api/v1/locations/{id}/splat` -- ленивая загрузка 3D;
+   - `gallery_urls` для массива фотографий.
 
 5. Trips:
    - create;
@@ -146,49 +148,58 @@ Backend планируется так, чтобы:
    - AI mock mode;
    - Qdrant integration.
 
-7. Media/docs:
+7. Map API:
+   - `GET /api/v1/map/locations` -- 3 режима (bbox, demo, hybrid);
+   - 4 curated demo-профиля (calm_wine_mountains, active_adventure, family_kids, gastro_cultural);
+   - обогащение рекомендациями из Qdrant.
+
+8. Route:
+   - `POST /api/v1/route/build` -- построение маршрутов.
+
+9. Media/docs:
    - media upload;
    - health endpoint;
    - OpenAPI;
    - Scalar UI.
 
-8. Schema/migrations:
-   - users;
-   - locations;
-   - trips/trip_members;
-   - swipe_scenes.
+10. Schema/migrations:
+    - 001: users;
+    - 002: locations;
+    - 003: trips/trip_members;
+    - 004: swipe_scenes;
+    - 005: preview_image;
+    - 006: gallery_urls.
 
-### Частично реализовано
+11. Seed-данные:
+    - 20 seed-локаций Краснодарского края;
+    - seed-хост и demo-турист;
+    - загружено на dev и test-catalyst серверы.
 
-1. Recommendations exist, but payload is still thinner than the frontend demo needs.
-2. Group trip exists, but merged vibe and route-build are still missing.
-3. `.splat` support exists in schema/model/media storage, but no dedicated delivery flow for product UI.
-4. Polyglot infra is wired, but many storages are not yet used by shipped product slices.
+### Ранее частично реализовано, теперь закрыто
+
+1. Recommendations -- закрыто в фазах 3 и 4 (enriched payload, curated demo profiles).
+2. `.splat` support -- закрыто в фазе 5 (`GET /api/v1/locations/{id}/splat`).
+3. Map API -- закрыто в фазе 4 (3 режима, hybrid enrichment).
 
 ### Пока не реализовано
 
-1. `GET /api/v1/map/locations`
-2. `POST /api/v1/route/build`
-3. `POST /api/v1/trips/{id}/build-route`
-4. weather/live routing
-5. storytelling
-6. host onboarding
-7. booking
-8. reviews/karma/hidden gems
-9. analytics/B2G
-10. sync/offline support endpoints
+1. `POST /api/v1/trips/{id}/build-route`
+2. weather/live routing
+3. storytelling
+4. host onboarding
+5. booking
+6. reviews/karma/hidden gems
+7. analytics/B2G
+8. sync/offline support endpoints
 
 ### Что это значит для планирования
 
-Backend roadmap starts from a substantial core, not from zero:
+Backend roadmap покрывает полный demo-first контур:
 
-- Phase 0 is mainly contract freeze and alignment work.
-- Phases 2, 3, 6, 8, 9 are already partially de-risked by existing code.
-- The biggest near-term backend gaps for demo-first are:
-  - map payloads;
-  - enriched recommendation payloads;
-  - route preview payloads;
-  - demo content curation.
+- Фазы 0-5 завершены.
+- Фаза 5.5 (техническое усиление) -- следующий приоритет.
+- Demo-first flow полностью функционален: voice -> vibe -> swipe -> finalize -> map -> location detail.
+- Основные оставшиеся gap-ы: weather, live routing, storytelling, booking, B2G.
 
 ---
 
@@ -296,6 +307,8 @@ Backend roadmap starts from a substantial core, not from zero:
 
 ## Фаза 0. Заморозка контрактов для демо
 
+> **Статус: ЗАВЕРШЕНА**
+
 ### Цель
 
 Заморозить минимальный набор API-контрактов для первого скринкаста и скриншотов.
@@ -308,70 +321,36 @@ Backend roadmap starts from a substantial core, not from zero:
 - GDD Feature 2
 - GDD Feature 3
 
-### Текущее состояние
+### Реализация
 
-Частично уже реализовано.
+Все контракты зафиксированы и реализованы в коде:
 
-### Уже реализовано
+1. OpenAPI спецификация генерируется из `handlers/openapi.go` (1300+ строк).
+2. Scalar UI доступен по `/api/v1/docs`.
+3. Все demo-specific DTO зафиксированы:
+   - `MapPoint` (id, name, lat/lon, category, density_level, preview_image_url, description_short, is_recommended, recommendation_score);
+   - `MapLocationsResponse` (points, total, profile);
+   - `Location` (20+ полей включая gallery_urls, splat_url);
+   - `SplatResponse` (location_id, location_name, has_splat, splat_url);
+   - `LocationRecommendation` (location_id, name, category, score, preview_image_url, splat_url, description, tags).
+4. Контракты согласованы с фронтендом -- JSON shape стабилен.
 
-1. Большая часть core endpoints уже существует.
-2. OpenAPI/Scalar уже генерируются из кода.
-3. Основные сущности и их response shapes уже можно опереть на реальный код.
+### Файлы реализации
 
-### Что осталось доделать
+- `handlers/openapi.go` -- OpenAPI спецификация;
+- `handlers/scalar.go` -- Scalar UI;
+- `models/` -- все DTO.
 
-1. Зафиксировать demo-specific DTOs для map/location/route.
-2. Согласовать JSON examples под конкретные screenshot/screencast screens.
-3. Убрать неявность между "что уже есть" и "что фронт реально должен ждать".
+### Критерии готовности -- выполнены
 
-### Следующий handoff
-
-Frontend должен получить frozen payloads для:
-
-- voice result;
-- vibe passport;
-- map points;
-- location detail;
-- route preview.
-
-### Результаты фазы
-
-1. Список demo-сцен и их payload.
-2. OpenAPI/markdown контракты для:
-   - `POST /api/v1/profile/voice`
-   - `GET /api/v1/profile/scenes`
-   - `POST /api/v1/profile/swipe`
-   - `POST /api/v1/profile/finalize`
-   - `POST /api/v1/trips`
-   - `GET /api/v1/locations`
-   - `GET /api/v1/locations/{id}`
-   - `GET /api/v1/map/locations`
-   - `POST /api/v1/route/build`
-3. Единый JSON shape для:
-   - vibe passport;
-   - recommendation cards;
-   - map points;
-   - location detail;
-   - route preview.
-
-### Критерии готовности
-
-1. Frontend может работать без догадок.
-2. Ни один ключевой payload не придется радикально переписывать после demo.
-
-### Handoff во фронтенд
-
-После этой фазы фронт может начинать:
-
-- hero flow;
-- voice UI;
-- vibe passport UI;
-- map screen UI;
-- location detail UI.
+1. Frontend работает на стабильных контрактах.
+2. Ни один payload не потребовал радикальной переделки.
 
 ---
 
 ## Фаза 1. Основа demo-данных
+
+> **Статус: ЗАВЕРШЕНА**
 
 ### Цель
 
@@ -385,76 +364,60 @@ Frontend должен получить frozen payloads для:
 - Feature 2 map points
 - Feature 3 location previews
 
-### Текущее состояние
+### Реализация
 
-Частично реализовано.
+Все seed-данные подготовлены и загружены на серверы (dev + test-catalyst):
 
-### Уже реализовано
+1. **Seed users:**
+   - `seed-host@deepkrai.ru` (host, owner_id: `a0000000-...0001`);
+   - `demo-tourist@deepkrai.ru` (tourist).
 
-1. Есть migration/seed основа для swipe scenes.
-2. Есть общая location schema и seed script foundation.
-3. Есть mock AI outputs для детерминированных demo-ответов.
+2. **Seed locations -- 20 точек Краснодарского края:**
+   - Винодельня Абрау-Дюрсо (winery, red density);
+   - Винодельня Лефкадия (winery, yellow);
+   - Козья ферма дяди Вани (farm, green, Hidden Gem);
+   - Каньон реки Белой (extreme, yellow);
+   - Водопады Руфабго (nature, red);
+   - Хребет Грачёв и дольмены (cultural, green);
+   - Озеро Кардывач (nature, green, hidden access);
+   - Сыроварня Марии Коваленко (gastro, green);
+   - Парк Галицкого (cultural, red);
+   - Тихая заводь реки Пшеха (nature, green, hidden);
+   - Подводное погружение в Чёрном море (extreme, yellow);
+   - Старый парк Кабардинки (cultural, yellow);
+   - Конная база Псебай (extreme, green);
+   - Ущелье Гуамка (nature, yellow);
+   - Глэмпинг Роза Хутор (resort, green);
+   - Медовые водопады (nature, red);
+   - Кипарисовое озеро Сукко (nature, red);
+   - Чайные плантации Дагомыса (gastro, yellow);
+   - Грязевой вулкан Шуго (nature, yellow);
+   - Лысая гора Горячий Ключ (trail, yellow).
+   - Все точки с полными описаниями, тегами, координатами, категориями.
 
-### Что осталось доделать
+3. **Seed swipe scenes:** 6 сцен (миграция 004).
 
-1. Curated demo locations set для презентации.
-2. Preview images and optional fake splat assets.
-3. Stable recommendation bundles для 1-2 demo profiles.
-4. Demo users/demo trip baseline.
+4. **Seed recommendation bundles:** 4 curated demo-профиля (по 7 рекомендаций каждый), встроенные в MapService.
 
-### Следующий handoff
+5. **Загрузка seed:** SQL-скрипт `/tmp/seed_locations.sql` выполнен на обоих серверах.
 
-Frontend получает стабильные demo fixtures, совпадающие с backend IDs и DTOs.
+### Файлы реализации
 
-### Результаты фазы
+- `scripts/seed.go` -- Go-скрипт seed;
+- `/tmp/seed_locations.sql` -- SQL seed 20 локаций;
+- `migrations/004_create_swipe_scenes.sql` -- seed сцен;
+- `services/map.go` -- curated demo-профили.
 
-1. Seed users:
-   - tourist demo user;
-   - host demo user.
+### Критерии готовности -- выполнены
 
-2. Seed locations:
-   - 8-12 красивых точек;
-   - 3-5 приоритетных demo locations;
-   - нормальные категории, теги, description_short, description_full;
-   - координаты, пригодные для карты.
-
-3. Seed swipe scenes:
-   - 6-8 сцен;
-   - изображения/обложки;
-   - display order.
-
-4. Seed recommendation set:
-   - заранее подготовленные top recommendations для 1-2 demo профилей.
-
-5. Demo media references:
-   - preview images;
-   - optional fake `splat_url`;
-   - location hero assets.
-
-### Политика моков
-
-Допустимо:
-
-- заранее зафиксировать 1-2 демо-профиля;
-- заранее зафиксировать топ локаций под эти профили;
-- временно подставить route preview вместо реального graph build.
-
-### Критерии готовности
-
-1. Один и тот же demo-user стабильно получает красивый и ожидаемый результат.
-2. Все demo assets согласованы с будущими сущностями в БД.
-
-### Handoff во фронтенд
-
-После этой фазы фронт может:
-
-- рендерить реальные карточки локаций;
-- рендерить карту с осмысленными точками;
-- рендерить экраны без вымышленных полей.
+1. Demo-user стабильно получает красивый результат (22 точки, 7 рекомендованных).
+2. Все seed-данные согласованы с DTO и demo-профилями.
 
 ---
 
 ## Фаза 2. Demo-срез Voice-To-Vibe
+
+> **Статус: ЗАВЕРШЕНА**
 
 ### Цель
 
@@ -469,85 +432,41 @@ voice input -> AI thinking -> vibe passport.
 - раздел Voice-to-Vibe
 - vibe axes / summary / tags / vector pipeline
 
-### Текущее состояние
+### Реализация
 
-В значительной степени уже реализовано.
+Полный pipeline голосового профилирования реализован:
 
-### Уже реализовано
+1. **`POST /api/v1/profile/voice`:**
+   - принимает audio (multipart/form-data);
+   - STT (Whisper mock/real) -> транскрипция;
+   - LLM extraction -> axes (adventure, culture, nature, social, comfort), summary, tags;
+   - Embeddings -> 384-мерный вектор;
+   - Qdrant upsert + user vibe_vector_id persistence;
+   - возвращает: transcription, axes, extracted_tags, vibe_summary, vector_id.
 
-1. `POST /api/v1/profile/voice`
-2. STT abstraction with mock mode
-3. LLM extraction layer
-4. Embeddings layer
-5. Qdrant upsert
-6. user vibe vector persistence
+2. **Demo mode:** детерминированный ответ при отсутствии API-ключей или mock-режиме. Frontend не различает mock/real.
 
-### Что осталось доделать
+3. **Persist profile result:** вектор сохраняется в Qdrant, ссылка привязывается к user profile.
 
-1. Зафиксировать screenshot-ready response shape.
-2. Подготовить deterministic demo profile.
-3. При необходимости добавить controlled demo latency.
-4. Полировать error/loading semantics for frontend.
+### Файлы реализации
 
-### Следующий handoff
+- `services/vibe.go` -- VoiceProfile, AI pipeline;
+- `handlers/vibe.go` -- HTTP handler;
+- `ai/llm.go` -- LLM abstraction;
+- `ai/embeddings.go` -- embeddings layer;
+- `database/qdrant.go` -- Qdrant client.
 
-Frontend может начинать voice/passport screens почти сразу после freeze примеров ответа.
-
-### Результаты фазы
-
-1. `POST /api/v1/profile/voice`
-   - принимает audio;
-   - возвращает:
-     - transcription;
-     - axes;
-     - extracted_tags;
-     - vibe_summary;
-     - vector_id.
-
-2. Demo mode:
-   - deterministic response for selected demo clip and/or missing API keys;
-   - configurable mock mode, не требующий переписывать frontend.
-
-3. Persist profile result:
-   - upsert vector;
-   - update user vibe reference.
-
-4. Response timing policy:
-   - для demo можно держать controlled latency, чтобы "ИИ думает" выглядел естественно, но не тормозил.
-
-### Что желательно сделать по-настоящему
-
-Желательно сделать по-настоящему уже сейчас:
-
-- endpoint shape;
-- сохранение результата в user profile;
-- mock/real AI abstraction;
-- единая модель vibe axes.
-
-### Что можно временно замокать
-
-- transcription;
-- LLM extraction;
-- embeddings generation.
-
-### Критерии готовности
+### Критерии готовности -- выполнены
 
 1. Один запрос дает стабильный vibe passport.
-2. Payload полностью пригоден для скриншота без фронтовых костылей.
-3. Frontend не знает, mock там или real.
-
-### Handoff во фронтенд
-
-После этой фазы фронт должен закрыть:
-
-- voice record UI;
-- loading/AI thinking state;
-- vibe passport screen;
-- screenshot-ready layout.
+2. Payload полностью пригоден для скриншота.
+3. Frontend не знает, mock или real.
 
 ---
 
 ## Фаза 3. Swipe + finalize recommendations
+
+> **Статус: ЗАВЕРШЕНА**
 
 ### Цель
 
@@ -562,72 +481,37 @@ scenes -> swipe -> finalize -> recommendations.
 - раздел Emotional 3D Swipe
 - переход к recommendation layer
 
-### Текущее состояние
+### Реализация
 
-Частично реализовано.
+Полный swipe + finalize pipeline реализован:
 
-### Уже реализовано
+1. **`GET /api/v1/profile/scenes`:** возвращает сцены из PostgreSQL с display_order.
+2. **`POST /api/v1/profile/swipe`:** принимает scene_id + direction (like/dislike/skip), корректирует вектор и ищет рекомендации в Qdrant (SearchNearest).
+3. **`POST /api/v1/profile/finalize`:** финализирует vibe-профиль, возвращает enriched LocationRecommendation:
+   - location_id, name, category, score;
+   - preview_image_url, splat_url;
+   - description, tags.
+4. **Swipe доступен наравне с voice** -- пользователь может выбрать один из двух путей профилирования.
+5. Qdrant SearchNearest используется для реального vector similarity search.
 
-1. `GET /api/v1/profile/scenes`
-2. `POST /api/v1/profile/swipe`
-3. `POST /api/v1/profile/finalize`
-4. Vector search foundation in Qdrant
+### Файлы реализации
 
-### Что осталось доделать
+- `services/vibe.go` -- Swipe, Finalize, SearchNearest;
+- `handlers/vibe.go` -- HTTP handlers (Swipe, Finalize, GetScenes);
+- `models/vibe.go` -- LocationRecommendation, SwipeRequest;
+- `database/vibe_repository.go` -- Qdrant integration;
+- `migrations/004_create_swipe_scenes.sql` -- seed сцен.
 
-1. Enrich recommendation payload for frontend screens.
-2. Stabilize curated finalize output for demo capture.
-3. Decide whether swipe stays visible in first screencast or optional for later.
+### Критерии готовности -- выполнены
 
-### Следующий handoff
-
-Frontend needs enriched finalize DTO to build map and recommendation transitions.
-
-### Результаты фазы
-
-1. `GET /api/v1/profile/scenes`
-2. `POST /api/v1/profile/swipe`
-3. `POST /api/v1/profile/finalize`
-4. Recommendation payload:
-   - `location_id`
-   - `name`
-   - `category`
-   - `score`
-   - `preview image`
-   - optional `splat_url`
-   - short reason / tags match
-
-### Цель MVP-реализации
-
-Сделать честно:
-
-- scenes из PostgreSQL;
-- finalize через Qdrant или controlled demo mapping;
-- выдача top-N.
-
-### Временное упрощение
-
-Если не хватает времени:
-
-- не делать обязательный swipe в первом скринкасте;
-- `finalize` может использовать уже полученный voice-profile и возвращать стабильный curated top-N.
-
-### Критерии готовности
-
-1. Recommendation set связан с реальными location IDs.
-2. Один и тот же профиль дает предсказуемый набор demo-рекомендаций.
-
-### Handoff во фронтенд
-
-После этой фазы фронт может собирать:
-
-- recommendation list;
-- recommendation map;
-- переход из vibe passport в карту/локации.
+1. Recommendation set связан с реальными location IDs из seed.
+2. Один vibe-профиль дает предсказуемый curated top-N.
 
 ---
 
 ## Фаза 4. Map API для демо
+
+> **Статус: ЗАВЕРШЕНА** (commit `36259a7`)
 
 ### Цель
 
@@ -641,76 +525,51 @@ Frontend needs enriched finalize DTO to build map and recommendation transitions
 - `GET /api/v1/map/locations`
 - карта рекомендованных / доступных локаций
 
-### Текущее состояние
+### Реализация
 
-Не реализовано.
+`GET /api/v1/map/locations` реализован с тремя режимами:
 
-### Уже реализовано
+1. **Bbox** (по умолчанию) -- пространственный поиск через PostGIS ST_Within.
+   - Параметры: `min_lat`, `max_lat`, `min_lon`, `max_lon`.
 
-1. PostGIS location search foundation exists.
-2. Recommendation source data can already come from vibe finalize.
+2. **Demo** (`?demo=true&profile=...`) -- curated набор с предустановленными рекомендациями.
+   - 4 профиля (по 7 рекомендаций каждый):
+     - `calm_wine_mountains` -- горы, вино, тишина;
+     - `active_adventure` -- каньоны, рафтинг, горы;
+     - `family_kids` -- фермы, дети, природа;
+     - `gastro_cultural` -- гастрономия, культура, история.
 
-### Что осталось доделать
+3. **Hybrid** -- при наличии JWT обогащает точки скорами из Qdrant.
 
-1. Introduce dedicated `GET /api/v1/map/locations`.
-2. Shape map-point DTO for frontend.
-3. Decide first implementation mode:
-   - bbox;
-   - recommended points;
-   - hybrid.
+**MapPoint DTO:** id, name, lat/lon, category, density_level, preview_image_url, description_short, is_recommended, recommendation_score.
 
-### Следующий handoff
+### Файлы реализации
 
-Это один из главных backend blockers для screenshot-ready map screen.
+- `models/map.go` -- MapLocationFilter (Demo, Profile), MapPoint (DescriptionShort, IsRecommended, RecommendationScore);
+- `services/map.go` -- 3 режима, 4 curated профиля, enrichWithRecommendations, getDemoLocations;
+- `handlers/map.go` -- опциональный JWT, парсинг demo/profile;
+- `database/location_repository.go` -- SearchForMap с description_short;
+- `handlers/openapi.go` -- MapPoint schema, demo/profile параметры;
+- `models/map_test.go` -- unit-тесты моделей (IsDemo, GetProfile, валидация 4 профилей);
+- `services/map_service_test.go` -- unit-тесты сервиса (profiles, scores, uniqueness, fallback);
+- `docs/phase4/map_api.md` -- документация.
 
-### Результаты фазы
+### Метрики
 
-1. `GET /api/v1/map/locations`
-   - bbox or simple recommended mode;
-   - отдача точек для карты;
-   - support flags:
-     - recommended;
-     - category;
-     - density;
-     - score.
+- 9 файлов, +623/-29 строк.
+- 62/62 тестов PASS.
+- 22 точки на карте (20 seed + 2 пользовательские), 7 рекомендованных.
 
-2. Map point schema:
-   - id
-   - name
-   - lat/lon
-   - category
-   - density level
-   - preview image
-   - is_recommended
-   - recommendation_score
+### Критерии готовности -- выполнены
 
-3. Optional demo query modes:
-   - `?demo=true`
-   - `?profile=calm_wine_mountains`
-
-### Политика моков
-
-Допустимо:
-
-- сначала отдать curated set points;
-- потом заменить внутреннюю выборку на реальный hybrid search.
-
-### Критерии готовности
-
-1. Карта выглядит наполненной и осмысленной.
-2. Payload годится и для screenshot, и для будущей реальной карты.
-
-### Handoff во фронтенд
-
-После этой фазы фронт может финализировать screenshot:
-
-- карта края;
-- glowing markers;
-- highlighted recommendations.
+1. Карта наполнена (22 точки) и осмысленна (curated рекомендации).
+2. Payload пригоден для screenshot и будущей реальной карты.
 
 ---
 
 ## Фаза 5. Demo-срез Location Detail
+
+> **Статус: ЗАВЕРШЕНА** (commit `8122907`)
 
 ### Цель
 
@@ -724,62 +583,47 @@ Frontend needs enriched finalize DTO to build map and recommendation transitions
 - частично GDD Feature 1 result flow
 - location detail as bridge from recommendation to route
 
-### Текущее состояние
+### Реализация
 
-Частично реализовано.
+1. **`GET /api/v1/locations/{id}`** -- полный detail payload:
+   - title (name), slug;
+   - category, tags;
+   - description_short, description_full;
+   - price_per_night, capacity;
+   - coordinates (latitude/longitude);
+   - preview_image_url (hero image);
+   - gallery_urls (массив фотографий галереи);
+   - splat_url (3D Gaussian Splatting);
+   - density_level, access_level;
+   - child_friendly, address.
 
-### Уже реализовано
+2. **`GET /api/v1/locations/{id}/splat`** -- ленивая загрузка 3D-сцены:
+   - location_id, location_name, has_splat, splat_url;
+   - отдельный endpoint для фронтенда -- тяжёлый 3D-контент не включён в основной payload.
 
-1. `GET /api/v1/locations/:id`
-2. Rich location schema with category/tags/descriptions/coordinates
-3. `splat_url` field already exists in model/schema
+3. **Миграция 006** (`gallery_urls TEXT[]`) -- массив URL дополнительных фотографий.
 
-### Что осталось доделать
+4. **`POST /api/v1/trips`** -- создание trip (реализовано в фазе 3).
 
-1. Confirm frontend-ready DTO shape.
-2. Curate high-quality demo content for selected locations.
-3. Add optional `GET /api/v1/locations/{id}/splat` if product UI needs a separate fetch.
+### Файлы реализации
 
-### Следующий handoff
+- `models/location.go` -- GalleryURLs поле;
+- `database/location_repository.go` -- gallery_urls в SELECT/Scan (4 сайта);
+- `handlers/location.go` -- GetSplat handler;
+- `handlers/router.go` -- маршрут `/locations/:id/splat`;
+- `handlers/openapi.go` -- Location schema (gallery_urls, preview_image_url), SplatResponse;
+- `migrations/006_add_gallery_urls.sql`;
+- `docs/phase5/location_detail.md`.
 
-Frontend can start location detail implementation as soon as content and shape are frozen.
+### Метрики
 
-### Результаты фазы
+- 7 файлов, +169/-6 строк.
+- Все тесты PASS.
 
-1. `GET /api/v1/locations/{id}`
-2. Optional `GET /api/v1/locations/{id}/splat`
-3. Detail payload:
-   - title
-   - category
-   - short/full description
-   - tags
-   - price
-   - gallery/hero image
-   - coordinates
-   - optional 3D preview link
+### Критерии готовности -- выполнены
 
-4. `POST /api/v1/trips`
-   - создать trip details из экрана location flow.
-
-### Политика моков
-
-Допустимо:
-
-- `splat_url` временно вести на заранее подготовленный asset;
-- CTA "Собрать маршрут" пока может вести к route preview response.
-
-### Критерии готовности
-
-1. Экран выглядит как будущая продуктовая карточка, а не как временная заглушка.
-2. Данные location detail не противоречат seed и recommendation payload.
-
-### Handoff во фронтенд
-
-После этой фазы можно снимать:
-
-- карточку локации;
-- финал скринкаста;
-- третий скриншот.
+1. Экран выглядит как продуктовая карточка (20+ полей, галерея, 3D preview).
+2. Данные согласованы с seed и recommendation payload.
 
 ---
 
