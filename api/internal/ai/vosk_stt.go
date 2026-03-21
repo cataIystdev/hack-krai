@@ -9,7 +9,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
@@ -143,6 +145,7 @@ type voskResult struct {
 
 // convertToPCM конвертирует аудио из любого формата в PCM 16kHz mono 16-bit LE
 // через ffmpeg. Принимает io.Reader с аудиоданными, возвращает байты PCM.
+// Использует временный файл вместо pipe для надёжной обработки webm/matroska.
 func (v *VoskClient) convertToPCM(ctx context.Context, audioReader io.Reader) ([]byte, error) {
 	// Читаем всё аудио в память.
 	audioData, err := io.ReadAll(audioReader)
@@ -150,17 +153,46 @@ func (v *VoskClient) convertToPCM(ctx context.Context, audioReader io.Reader) ([
 		return nil, fmt.Errorf("ошибка чтения аудиоданных: %w", err)
 	}
 
-	// ffmpeg: читает из stdin, выводит PCM s16le 16kHz mono в stdout.
-	cmd := exec.CommandContext(ctx, "ffmpeg",
-		"-i", "pipe:0", // вход из stdin
+	if len(audioData) == 0 {
+		return nil, fmt.Errorf("пустые аудиоданные (0 байт)")
+	}
+
+	v.logger.Debug("аудиоданные получены для конвертации",
+		zap.Int("size_bytes", len(audioData)),
+	)
+
+	// Создаём временный файл для входных данных.
+	// Pipe (stdin) ненадёжен для контейнерных форматов (webm/matroska),
+	// так как ffmpeg не может seek-ить для чтения EBML-заголовков.
+	tmpFile, err := os.CreateTemp("", "audio-*.webm")
+	if err != nil {
+		return nil, fmt.Errorf("ошибка создания временного файла: %w", err)
+	}
+	defer os.Remove(tmpFile.Name())
+	defer tmpFile.Close()
+
+	if _, err := tmpFile.Write(audioData); err != nil {
+		return nil, fmt.Errorf("ошибка записи аудио во временный файл: %w", err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		return nil, fmt.Errorf("ошибка закрытия временного файла: %w", err)
+	}
+
+	// ffmpeg: читает из файла, выводит PCM s16le 16kHz mono в stdout.
+	// Таймаут 30 секунд для конвертации.
+	convertCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(convertCtx, "ffmpeg",
+		"-y",                 // перезаписывать выходные файлы
+		"-loglevel", "error", // минимальный вывод
+		"-i", tmpFile.Name(), // вход из файла (не pipe)
 		"-ar", "16000", // sample rate 16kHz
 		"-ac", "1", // mono
 		"-f", "s16le", // формат: signed 16-bit little-endian PCM
 		"-acodec", "pcm_s16le", // кодек
 		"pipe:1", // выход в stdout
 	)
-
-	cmd.Stdin = bytes.NewReader(audioData)
 
 	var outBuf bytes.Buffer
 	var errBuf bytes.Buffer
@@ -171,8 +203,13 @@ func (v *VoskClient) convertToPCM(ctx context.Context, audioReader io.Reader) ([
 		v.logger.Error("ошибка ffmpeg",
 			zap.Error(err),
 			zap.String("stderr", errBuf.String()),
+			zap.Int("input_size", len(audioData)),
 		)
 		return nil, fmt.Errorf("ffmpeg error: %w (stderr: %s)", err, errBuf.String())
+	}
+
+	if outBuf.Len() == 0 {
+		return nil, fmt.Errorf("ffmpeg вернул пустые PCM данные (вход: %d байт)", len(audioData))
 	}
 
 	return outBuf.Bytes(), nil

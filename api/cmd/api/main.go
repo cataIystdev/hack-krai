@@ -158,11 +158,12 @@ func main() {
 		// ServerHeader — заголовок Server в HTTP-ответах.
 		ServerHeader: cfg.App.Name,
 
-		// ReadTimeout — максимальное время чтения запроса.
-		ReadTimeout: 15 * time.Second,
+		// ReadTimeout — максимальное время чтения запроса (увеличено для загрузки аудио).
+		ReadTimeout: 30 * time.Second,
 
 		// WriteTimeout — максимальное время записи ответа.
-		WriteTimeout: 15 * time.Second,
+		// Увеличено для voice profiling pipeline: ffmpeg → Vosk STT → LLM → Embeddings → Qdrant.
+		WriteTimeout: 120 * time.Second,
 
 		// IdleTimeout — максимальное время ожидания следующего запроса (keep-alive).
 		IdleTimeout: 60 * time.Second,
