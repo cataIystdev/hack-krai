@@ -251,6 +251,38 @@ func (s *TripService) Join(ctx context.Context, tripID uuid.UUID, req *models.Jo
 	return created, nil
 }
 
+// GetUserTrips возвращает все поездки пользователя с участниками.
+// Используется для GET /api/v1/trips.
+func (s *TripService) GetUserTrips(ctx context.Context, userID uuid.UUID) ([]models.TripWithMembers, error) {
+	trips, err := s.tripRepo.FindByUserID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]models.TripWithMembers, 0, len(trips))
+	for i := range trips {
+		members, err := s.tripRepo.FindMembersByTripID(ctx, trips[i].ID)
+		if err != nil {
+			s.logger.Warn("не удалось загрузить участников поездки",
+				zap.String("trip_id", trips[i].ID.String()),
+				zap.Error(err),
+			)
+			members = []models.TripMember{}
+		}
+		result = append(result, models.TripWithMembers{
+			Trip:    trips[i],
+			Members: members,
+		})
+	}
+
+	s.logger.Info("поездки пользователя получены",
+		zap.String("user_id", userID.String()),
+		zap.Int("count", len(result)),
+	)
+
+	return result, nil
+}
+
 // GetMembers возвращает список участников поездки.
 func (s *TripService) GetMembers(ctx context.Context, tripID uuid.UUID) ([]models.TripMember, error) {
 	// Проверка существования поездки.

@@ -337,6 +337,61 @@ func (r *TripRepository) CountMembers(ctx context.Context, tripID uuid.UUID) (in
 	return count, nil
 }
 
+// FindByUserID возвращает все поездки, в которых пользователь является участником.
+// Выполняет JOIN trips с trip_members по user_id.
+// Возвращает поездки, отсортированные по дате создания (новые первые).
+func (r *TripRepository) FindByUserID(ctx context.Context, userID uuid.UUID) ([]models.Trip, error) {
+	query := `
+		SELECT t.id, t.creator_id, t.date_from, t.date_to, t.budget_rub, t.budget_tier,
+		       t.transport, t.group_size, t.group_composition, t.invite_token,
+		       t.merged_vibe_vector_id, t.status, t.created_at, t.updated_at
+		FROM trips t
+		INNER JOIN trip_members tm ON t.id = tm.trip_id
+		WHERE tm.user_id = $1
+		ORDER BY t.created_at DESC
+	`
+
+	rows, err := r.pg.Pool.Query(ctx, query, userID)
+	if err != nil {
+		r.logger.Error("ошибка получения поездок пользователя",
+			zap.String("user_id", userID.String()),
+			zap.Error(err),
+		)
+		return nil, fmt.Errorf("ошибка получения поездок пользователя: %w", err)
+	}
+	defer rows.Close()
+
+	var trips []models.Trip
+	for rows.Next() {
+		var t models.Trip
+		if err := rows.Scan(
+			&t.ID,
+			&t.CreatorID,
+			&t.DateFrom,
+			&t.DateTo,
+			&t.BudgetRub,
+			&t.BudgetTier,
+			&t.Transport,
+			&t.GroupSize,
+			&t.GroupComposition,
+			&t.InviteToken,
+			&t.MergedVibeVectorID,
+			&t.Status,
+			&t.CreatedAt,
+			&t.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("ошибка сканирования поездки: %w", err)
+		}
+		trips = append(trips, t)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ошибка итерации поездок: %w", err)
+	}
+
+	return trips, nil
+}
+
 // AddMemberAtomic атомарно добавляет участника в поездку с проверкой лимита group_size.
 // Использует INSERT ... SELECT WHERE (SELECT count(*) ...) < maxGroupSize,
 // что гарантирует атомарность проверки и вставки на уровне одного SQL-запроса.

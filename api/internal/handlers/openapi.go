@@ -608,6 +608,33 @@ func OpenAPISpec(baseURL string) map[string]any {
 				},
 			},
 			"/api/v1/trips": map[string]any{
+				"get": map[string]any{
+					"tags":        []string{"Поездки"},
+					"summary":     "Список поездок текущего пользователя",
+					"description": "Возвращает все поездки, в которых текущий пользователь является участником (creator или member). Для каждой поездки включается полный список участников.",
+					"operationId": "listUserTrips",
+					"security":    []map[string]any{{"BearerAuth": []string{}}},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Список поездок пользователя.",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{
+										"type": "object",
+										"properties": map[string]any{
+											"data": map[string]any{
+												"type":  "array",
+												"items": map[string]any{"$ref": "#/components/schemas/TripWithMembers"},
+											},
+											"count": map[string]any{"type": "integer", "example": 2},
+										},
+									},
+								},
+							},
+						},
+						"401": map[string]any{"description": "Отсутствует или невалидный токен."},
+					},
+				},
 				"post": map[string]any{
 					"tags":        []string{"Поездки"},
 					"summary":     "Создание поездки",

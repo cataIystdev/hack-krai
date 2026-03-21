@@ -84,6 +84,45 @@ func (h *TripHandler) Create(c fiber.Ctx) error {
 	})
 }
 
+// ListTrips обрабатывает GET /api/v1/trips.
+// Возвращает все поездки текущего пользователя с участниками.
+// Требует JWT-аутентификации.
+func (h *TripHandler) ListTrips(c fiber.Ctx) error {
+	// Получение ID пользователя из JWT-контекста.
+	userIDStr, ok := c.Locals("user_id").(string)
+	if !ok || userIDStr == "" {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"success": false,
+			"message": "не удалось определить пользователя",
+		})
+	}
+
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"success": false,
+			"message": "некорректный идентификатор пользователя",
+		})
+	}
+
+	trips, err := h.tripService.GetUserTrips(c.Context(), userID)
+	if err != nil {
+		h.logger.Error("ошибка получения поездок пользователя",
+			zap.String("user_id", userID.String()),
+			zap.Error(err),
+		)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"success": false,
+			"message": "ошибка получения поездок",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"data":  trips,
+		"count": len(trips),
+	})
+}
+
 // GetByID обрабатывает GET /api/v1/trips/:id.
 // Возвращает детали поездки со списком участников.
 // Требует JWT-аутентификации.

@@ -110,6 +110,7 @@ func SetupRoutes(
 
 	// Поездки — защищённые эндпоинты (создание, детали, invite, участники).
 	tripsProtected := v1.Group("/trips", jwtMiddleware)
+	tripsProtected.Get("/", tripHandler.ListTrips)
 	tripsProtected.Post("/", tripHandler.Create)
 	tripsProtected.Get("/:id", tripHandler.GetByID)
 	tripsProtected.Post("/:id/invite", tripHandler.GenerateInvite)
