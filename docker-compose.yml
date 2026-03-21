@@ -24,12 +24,20 @@ services:
     volumes:
       - ./.env.api:/.env:ro
     depends_on:
-      - postgres
-      - redis
-      - minio
-      - neo4j
-      - clickhouse
-      - qdrant
+      postgres:
+        condition: service_started
+      redis:
+        condition: service_started
+      minio:
+        condition: service_started
+      neo4j:
+        condition: service_started
+      clickhouse:
+        condition: service_started
+      qdrant:
+        condition: service_started
+      vosk:
+        condition: service_healthy
     networks:
       - kudytudy-network
 
