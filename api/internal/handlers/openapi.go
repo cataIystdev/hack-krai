@@ -672,6 +672,31 @@ func OpenAPISpec(baseURL string) map[string]any {
 						"404": map[string]any{"description": "Поездка не найдена."},
 					},
 				},
+				"put": map[string]any{
+					"tags":        []string{"Поездки"},
+					"summary":     "Обновление поездки",
+					"description": "Частичное обновление поездки. Обновляются только переданные (non-null) поля. Доступно только создателю поездки.",
+					"operationId": "updateTrip",
+					"security":    []map[string]any{{"BearerAuth": []string{}}},
+					"parameters": []map[string]any{
+						{"name": "id", "in": "path", "required": true, "schema": map[string]any{"type": "string", "format": "uuid"}, "description": "UUID поездки."},
+					},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/UpdateTripRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{"description": "Поездка обновлена. Возвращает объект поездки с участниками."},
+						"400": map[string]any{"description": "Ошибка валидации (некорректные даты, бюджет, транспорт, формат)."},
+						"401": map[string]any{"description": "Отсутствует или невалидный токен."},
+						"403": map[string]any{"description": "Нет прав (не создатель поездки)."},
+						"404": map[string]any{"description": "Поездка не найдена."},
+					},
+				},
 			},
 			"/api/v1/trips/{id}/invite": map[string]any{
 				"post": map[string]any{
@@ -1233,11 +1258,23 @@ func OpenAPISpec(baseURL string) map[string]any {
 						"transport":             map[string]any{"type": "string", "enum": []string{"car", "public", "walk", "bike"}, "description": "Вид транспорта."},
 						"group_size":            map[string]any{"type": "integer", "description": "Планируемое количество участников.", "example": 4},
 						"group_composition":     map[string]any{"type": "object", "description": "Состав группы (JSONB)."},
+						"format":                map[string]any{"type": "string", "enum": []string{"day_trip", "weekend", "multi_day"}, "description": "Формат поездки.", "example": "multi_day"},
 						"invite_token":          map[string]any{"type": "string", "format": "uuid", "description": "Токен для приглашения участников."},
+						"vibe_vector_id":        map[string]any{"type": "string", "format": "uuid", "description": "ID vibe-вектора создателя в Qdrant.", "nullable": true},
 						"merged_vibe_vector_id": map[string]any{"type": "string", "format": "uuid", "description": "ID средневзвешенного vibe-вектора группы.", "nullable": true},
 						"status":                map[string]any{"type": "string", "enum": []string{"planning", "active", "completed", "cancelled"}, "description": "Статус поездки."},
 						"created_at":            map[string]any{"type": "string", "format": "date-time"},
 						"updated_at":            map[string]any{"type": "string", "format": "date-time"},
+					},
+				},
+				"TripWithMembers": map[string]any{
+					"type":        "object",
+					"description": "Поездка со списком участников.",
+					"allOf": []map[string]any{
+						{"$ref": "#/components/schemas/Trip"},
+						{"type": "object", "properties": map[string]any{
+							"members": map[string]any{"type": "array", "items": map[string]any{"$ref": "#/components/schemas/TripMember"}, "description": "Список участников поездки."},
+						}},
 					},
 				},
 				"TripMember": map[string]any{
@@ -1266,8 +1303,25 @@ func OpenAPISpec(baseURL string) map[string]any {
 						"transport":         map[string]any{"type": "string", "enum": []string{"car", "public", "walk", "bike"}, "default": "car"},
 						"group_size":        map[string]any{"type": "integer", "default": 1, "description": "Количество участников.", "example": 4},
 						"group_composition": map[string]any{"type": "object", "description": "Состав группы.", "example": map[string]any{"adults": 2, "children": []map[string]any{{"age": 8}, {"age": 12}}}},
+						"format":            map[string]any{"type": "string", "enum": []string{"day_trip", "weekend", "multi_day"}, "default": "multi_day", "description": "Формат поездки."},
+						"vibe_vector_id":    map[string]any{"type": "string", "format": "uuid", "description": "ID vibe-вектора создателя из Qdrant (опционально)."},
 					},
 					"required": []string{"date_from", "date_to"},
+				},
+				"UpdateTripRequest": map[string]any{
+					"type":        "object",
+					"description": "Запрос частичного обновления поездки. Все поля опциональны — обновляются только переданные.",
+					"properties": map[string]any{
+						"date_from":         map[string]any{"type": "string", "format": "date", "description": "Новая дата начала."},
+						"date_to":           map[string]any{"type": "string", "format": "date", "description": "Новая дата окончания."},
+						"budget_rub":        map[string]any{"type": "integer", "description": "Новый бюджет."},
+						"budget_tier":       map[string]any{"type": "string", "enum": []string{"economy", "comfort", "premium"}},
+						"transport":         map[string]any{"type": "string", "enum": []string{"car", "public", "walk", "bike"}},
+						"group_size":        map[string]any{"type": "integer"},
+						"group_composition": map[string]any{"type": "object"},
+						"format":            map[string]any{"type": "string", "enum": []string{"day_trip", "weekend", "multi_day"}},
+						"vibe_vector_id":    map[string]any{"type": "string", "format": "uuid"},
+					},
 				},
 				"JoinTripRequest": map[string]any{
 					"type":        "object",

@@ -113,6 +113,7 @@ func SetupRoutes(
 	tripsProtected.Get("/", tripHandler.ListTrips)
 	tripsProtected.Post("/", tripHandler.Create)
 	tripsProtected.Get("/:id", tripHandler.GetByID)
+	tripsProtected.Put("/:id", tripHandler.Update)
 	tripsProtected.Post("/:id/invite", tripHandler.GenerateInvite)
 	tripsProtected.Get("/:id/members", tripHandler.ListMembers)
 

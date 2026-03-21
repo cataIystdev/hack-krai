@@ -279,6 +279,68 @@ func (h *TripHandler) ListMembers(c fiber.Ctx) error {
 	})
 }
 
+// Update обрабатывает PUT /api/v1/trips/:id.
+// Частичное обновление поездки. Обновляются только переданные (non-null) поля.
+// Доступно только создателю поездки. Требует JWT-аутентификации.
+func (h *TripHandler) Update(c fiber.Ctx) error {
+	// Получение ID пользователя из JWT-контекста.
+	userIDStr, ok := c.Locals("user_id").(string)
+	if !ok || userIDStr == "" {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"success": false,
+			"message": "не удалось определить пользователя",
+		})
+	}
+
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"success": false,
+			"message": "некорректный идентификатор пользователя",
+		})
+	}
+
+	// Парсинг ID поездки.
+	tripIDStr := c.Params("id")
+	tripID, err := uuid.Parse(tripIDStr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"success": false,
+			"message": "некорректный формат ID поездки",
+		})
+	}
+
+	// Парсинг тела запроса.
+	var req models.UpdateTripRequest
+	if err := c.Bind().JSON(&req); err != nil {
+		h.logger.Debug("ошибка парсинга тела запроса обновления поездки", zap.Error(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"success": false,
+			"message": "некорректный формат запроса",
+		})
+	}
+
+	// Валидация.
+	if msg := req.Validate(); msg != "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"success": false,
+			"message": msg,
+		})
+	}
+
+	// Обновление поездки через сервис.
+	result, err := h.tripService.Update(c.Context(), tripID, userID, &req)
+	if err != nil {
+		return h.handleTripError(c, err)
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"success": true,
+		"message": "поездка успешно обновлена",
+		"data":    result,
+	})
+}
+
 // handleTripError обрабатывает ошибки сервиса поездок
 // и формирует соответствующие HTTP-ответы.
 func (h *TripHandler) handleTripError(c fiber.Ctx, err error) error {

@@ -1,12 +1,13 @@
 // Файл trip_repository.go реализует слой доступа к данным для таблиц trips и trip_members.
 // Инкапсулирует SQL-запросы: создание поездок и участников, поиск по ID и invite-токену,
-// обновление токенов и vibe-векторов, подсчёт участников.
+// обновление токенов, vibe-векторов и частичное обновление поездок, подсчёт участников.
 package database
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -27,6 +28,11 @@ var (
 	ErrTripFull = errors.New("достигнут лимит участников поездки")
 )
 
+// tripColumns — список столбцов таблицы trips для SELECT-запросов.
+const tripColumns = `id, creator_id, date_from, date_to, budget_rub, budget_tier, transport,
+	group_size, group_composition, format, invite_token, vibe_vector_id,
+	merged_vibe_vector_id, status, created_at, updated_at`
+
 // TripRepository — репозиторий для работы с таблицами trips и trip_members.
 type TripRepository struct {
 	pg     *PostgresClient
@@ -41,19 +47,44 @@ func NewTripRepository(pg *PostgresClient, logger *zap.Logger) *TripRepository {
 	}
 }
 
+// scanTrip сканирует строку результата в структуру models.Trip.
+// Используется для избежания дублирования Scan-полей в разных методах.
+func scanTrip(row pgx.Row) (*models.Trip, error) {
+	var trip models.Trip
+	err := row.Scan(
+		&trip.ID,
+		&trip.CreatorID,
+		&trip.DateFrom,
+		&trip.DateTo,
+		&trip.BudgetRub,
+		&trip.BudgetTier,
+		&trip.Transport,
+		&trip.GroupSize,
+		&trip.GroupComposition,
+		&trip.Format,
+		&trip.InviteToken,
+		&trip.VibeVectorID,
+		&trip.MergedVibeVectorID,
+		&trip.Status,
+		&trip.CreatedAt,
+		&trip.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &trip, nil
+}
+
 // Create создаёт новую поездку в таблице trips.
 // Возвращает созданную поездку со всеми полями, включая сгенерированные ID и invite_token.
 func (r *TripRepository) Create(ctx context.Context, trip *models.Trip) (*models.Trip, error) {
 	query := `
-		INSERT INTO trips (creator_id, date_from, date_to, budget_rub, budget_tier, transport, group_size, group_composition, status)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-		RETURNING id, creator_id, date_from, date_to, budget_rub, budget_tier, transport,
-		          group_size, group_composition, invite_token, merged_vibe_vector_id, status,
-		          created_at, updated_at
-	`
+		INSERT INTO trips (creator_id, date_from, date_to, budget_rub, budget_tier, transport,
+		                   group_size, group_composition, format, vibe_vector_id, status)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		RETURNING ` + tripColumns
 
-	var result models.Trip
-	err := r.pg.Pool.QueryRow(ctx, query,
+	result, err := scanTrip(r.pg.Pool.QueryRow(ctx, query,
 		trip.CreatorID,
 		trip.DateFrom,
 		trip.DateTo,
@@ -62,23 +93,10 @@ func (r *TripRepository) Create(ctx context.Context, trip *models.Trip) (*models
 		trip.Transport,
 		trip.GroupSize,
 		trip.GroupComposition,
+		trip.Format,
+		trip.VibeVectorID,
 		trip.Status,
-	).Scan(
-		&result.ID,
-		&result.CreatorID,
-		&result.DateFrom,
-		&result.DateTo,
-		&result.BudgetRub,
-		&result.BudgetTier,
-		&result.Transport,
-		&result.GroupSize,
-		&result.GroupComposition,
-		&result.InviteToken,
-		&result.MergedVibeVectorID,
-		&result.Status,
-		&result.CreatedAt,
-		&result.UpdatedAt,
-	)
+	))
 	if err != nil {
 		r.logger.Error("ошибка создания поездки",
 			zap.String("creator_id", trip.CreatorID.String()),
@@ -91,36 +109,15 @@ func (r *TripRepository) Create(ctx context.Context, trip *models.Trip) (*models
 		zap.String("trip_id", result.ID.String()),
 		zap.String("creator_id", result.CreatorID.String()),
 	)
-	return &result, nil
+	return result, nil
 }
 
 // FindByID находит поездку по её UUID.
 // Возвращает ErrTripNotFound если поездка не существует.
 func (r *TripRepository) FindByID(ctx context.Context, id uuid.UUID) (*models.Trip, error) {
-	query := `
-		SELECT id, creator_id, date_from, date_to, budget_rub, budget_tier, transport,
-		       group_size, group_composition, invite_token, merged_vibe_vector_id, status,
-		       created_at, updated_at
-		FROM trips WHERE id = $1
-	`
+	query := `SELECT ` + tripColumns + ` FROM trips WHERE id = $1`
 
-	var trip models.Trip
-	err := r.pg.Pool.QueryRow(ctx, query, id).Scan(
-		&trip.ID,
-		&trip.CreatorID,
-		&trip.DateFrom,
-		&trip.DateTo,
-		&trip.BudgetRub,
-		&trip.BudgetTier,
-		&trip.Transport,
-		&trip.GroupSize,
-		&trip.GroupComposition,
-		&trip.InviteToken,
-		&trip.MergedVibeVectorID,
-		&trip.Status,
-		&trip.CreatedAt,
-		&trip.UpdatedAt,
-	)
+	result, err := scanTrip(r.pg.Pool.QueryRow(ctx, query, id))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrTripNotFound
@@ -132,37 +129,16 @@ func (r *TripRepository) FindByID(ctx context.Context, id uuid.UUID) (*models.Tr
 		return nil, fmt.Errorf("ошибка поиска поездки: %w", err)
 	}
 
-	return &trip, nil
+	return result, nil
 }
 
 // FindByInviteToken находит поездку по её invite-токену.
 // Используется при присоединении участника по ссылке-приглашению.
 // Возвращает ErrTripNotFound если поездка не существует.
 func (r *TripRepository) FindByInviteToken(ctx context.Context, token uuid.UUID) (*models.Trip, error) {
-	query := `
-		SELECT id, creator_id, date_from, date_to, budget_rub, budget_tier, transport,
-		       group_size, group_composition, invite_token, merged_vibe_vector_id, status,
-		       created_at, updated_at
-		FROM trips WHERE invite_token = $1
-	`
+	query := `SELECT ` + tripColumns + ` FROM trips WHERE invite_token = $1`
 
-	var trip models.Trip
-	err := r.pg.Pool.QueryRow(ctx, query, token).Scan(
-		&trip.ID,
-		&trip.CreatorID,
-		&trip.DateFrom,
-		&trip.DateTo,
-		&trip.BudgetRub,
-		&trip.BudgetTier,
-		&trip.Transport,
-		&trip.GroupSize,
-		&trip.GroupComposition,
-		&trip.InviteToken,
-		&trip.MergedVibeVectorID,
-		&trip.Status,
-		&trip.CreatedAt,
-		&trip.UpdatedAt,
-	)
+	result, err := scanTrip(r.pg.Pool.QueryRow(ctx, query, token))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrTripNotFound
@@ -174,7 +150,48 @@ func (r *TripRepository) FindByInviteToken(ctx context.Context, token uuid.UUID)
 		return nil, fmt.Errorf("ошибка поиска поездки по invite_token: %w", err)
 	}
 
-	return &trip, nil
+	return result, nil
+}
+
+// Update частично обновляет поездку по переданным полям.
+// Принимает map[string]any с именами столбцов и значениями.
+// Возвращает обновлённую поездку или ErrTripNotFound.
+func (r *TripRepository) Update(ctx context.Context, tripID uuid.UUID, fields map[string]any) (*models.Trip, error) {
+	if len(fields) == 0 {
+		return r.FindByID(ctx, tripID)
+	}
+
+	setParts := make([]string, 0, len(fields))
+	args := make([]any, 0, len(fields)+1)
+	paramIdx := 1
+
+	for col, val := range fields {
+		setParts = append(setParts, fmt.Sprintf("%s = $%d", col, paramIdx))
+		args = append(args, val)
+		paramIdx++
+	}
+
+	args = append(args, tripID)
+	query := fmt.Sprintf(`UPDATE trips SET %s WHERE id = $%d RETURNING %s`,
+		strings.Join(setParts, ", "), paramIdx, tripColumns)
+
+	result, err := scanTrip(r.pg.Pool.QueryRow(ctx, query, args...))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrTripNotFound
+		}
+		r.logger.Error("ошибка обновления поездки",
+			zap.String("trip_id", tripID.String()),
+			zap.Error(err),
+		)
+		return nil, fmt.Errorf("ошибка обновления поездки: %w", err)
+	}
+
+	r.logger.Info("поездка обновлена",
+		zap.String("trip_id", result.ID.String()),
+		zap.Int("fields_updated", len(fields)),
+	)
+	return result, nil
 }
 
 // UpdateInviteToken обновляет invite-токен поездки на новый UUID.
@@ -343,8 +360,8 @@ func (r *TripRepository) CountMembers(ctx context.Context, tripID uuid.UUID) (in
 func (r *TripRepository) FindByUserID(ctx context.Context, userID uuid.UUID) ([]models.Trip, error) {
 	query := `
 		SELECT t.id, t.creator_id, t.date_from, t.date_to, t.budget_rub, t.budget_tier,
-		       t.transport, t.group_size, t.group_composition, t.invite_token,
-		       t.merged_vibe_vector_id, t.status, t.created_at, t.updated_at
+		       t.transport, t.group_size, t.group_composition, t.format, t.invite_token,
+		       t.vibe_vector_id, t.merged_vibe_vector_id, t.status, t.created_at, t.updated_at
 		FROM trips t
 		INNER JOIN trip_members tm ON t.id = tm.trip_id
 		WHERE tm.user_id = $1
@@ -374,7 +391,9 @@ func (r *TripRepository) FindByUserID(ctx context.Context, userID uuid.UUID) ([]
 			&t.Transport,
 			&t.GroupSize,
 			&t.GroupComposition,
+			&t.Format,
 			&t.InviteToken,
+			&t.VibeVectorID,
 			&t.MergedVibeVectorID,
 			&t.Status,
 			&t.CreatedAt,

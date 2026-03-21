@@ -69,8 +69,14 @@ type Trip struct {
 	// Пример: {"adults": 2, "children": [{"age": 8}, {"age": 12}]}.
 	GroupComposition json.RawMessage `json:"group_composition" db:"group_composition"`
 
+	// Format — формат поездки (day_trip/weekend/multi_day).
+	Format string `json:"format" db:"format"`
+
 	// InviteToken — уникальный токен для приглашения участников.
 	InviteToken uuid.UUID `json:"invite_token" db:"invite_token"`
+
+	// VibeVectorID — ID vibe-вектора создателя в Qdrant (nullable).
+	VibeVectorID *uuid.UUID `json:"vibe_vector_id,omitempty" db:"vibe_vector_id"`
 
 	// MergedVibeVectorID — ID средневзвешенного vibe-вектора группы в Qdrant.
 	MergedVibeVectorID *uuid.UUID `json:"merged_vibe_vector_id,omitempty" db:"merged_vibe_vector_id"`
@@ -149,6 +155,12 @@ type CreateTripRequest struct {
 
 	// GroupComposition — состав группы в формате JSON (опционально).
 	GroupComposition json.RawMessage `json:"group_composition"`
+
+	// Format — формат поездки: day_trip, weekend, multi_day (по умолчанию multi_day).
+	Format string `json:"format"`
+
+	// VibeVectorID — ID vibe-вектора создателя из Qdrant (опционально).
+	VibeVectorID string `json:"vibe_vector_id"`
 }
 
 // DateLayout — формат даты для парсинга (ISO 8601 date).
@@ -167,6 +179,13 @@ var ValidTransports = map[string]bool{
 	"public": true,
 	"walk":   true,
 	"bike":   true,
+}
+
+// ValidFormats — допустимые форматы поездки.
+var ValidFormats = map[string]bool{
+	"day_trip":  true,
+	"weekend":   true,
+	"multi_day": true,
 }
 
 // Validate проверяет корректность данных для создания поездки.
@@ -209,6 +228,16 @@ func (r *CreateTripRequest) Validate() string {
 		return "количество участников не может быть отрицательным"
 	}
 
+	if r.Format != "" && !ValidFormats[r.Format] {
+		return "допустимые форматы поездки: day_trip, weekend, multi_day"
+	}
+
+	if r.VibeVectorID != "" {
+		if _, err := uuid.Parse(r.VibeVectorID); err != nil {
+			return "vibe_vector_id должен быть валидным UUID"
+		}
+	}
+
 	return ""
 }
 
@@ -233,6 +262,9 @@ func (r *CreateTripRequest) NormalizeDefaults() {
 	}
 	if r.GroupComposition == nil {
 		r.GroupComposition = json.RawMessage("{}")
+	}
+	if r.Format == "" {
+		r.Format = "multi_day"
 	}
 }
 
@@ -265,6 +297,96 @@ func (r *JoinTripRequest) Validate() string {
 	// Проверка формата UUID.
 	if _, err := uuid.Parse(r.InviteToken); err != nil {
 		return "invite_token должен быть валидным UUID"
+	}
+
+	return ""
+}
+
+// UpdateTripRequest — DTO для частичного обновления поездки.
+// Все поля — указатели (nil = не обновлять). PUT /api/v1/trips/{id}.
+type UpdateTripRequest struct {
+	// DateFrom — новая дата начала (формат: YYYY-MM-DD).
+	DateFrom *string `json:"date_from"`
+
+	// DateTo — новая дата окончания (формат: YYYY-MM-DD).
+	DateTo *string `json:"date_to"`
+
+	// BudgetRub — новый бюджет в рублях.
+	BudgetRub *int `json:"budget_rub"`
+
+	// BudgetTier — новый уровень бюджета.
+	BudgetTier *string `json:"budget_tier"`
+
+	// Transport — новый вид транспорта.
+	Transport *string `json:"transport"`
+
+	// GroupSize — новое количество участников.
+	GroupSize *int `json:"group_size"`
+
+	// GroupComposition — новый состав группы.
+	GroupComposition *json.RawMessage `json:"group_composition"`
+
+	// Format — новый формат поездки.
+	Format *string `json:"format"`
+
+	// VibeVectorID — новый ID vibe-вектора.
+	VibeVectorID *string `json:"vibe_vector_id"`
+}
+
+// Validate проверяет корректность данных для обновления поездки.
+// Проверяет только переданные (не nil) поля.
+func (r *UpdateTripRequest) Validate() string {
+	if r.DateFrom != nil {
+		if *r.DateFrom == "" {
+			return "дата начала не может быть пустой"
+		}
+		if _, err := time.Parse(DateLayout, *r.DateFrom); err != nil {
+			return "некорректный формат даты начала (ожидается YYYY-MM-DD)"
+		}
+	}
+
+	if r.DateTo != nil {
+		if *r.DateTo == "" {
+			return "дата окончания не может быть пустой"
+		}
+		if _, err := time.Parse(DateLayout, *r.DateTo); err != nil {
+			return "некорректный формат даты окончания (ожидается YYYY-MM-DD)"
+		}
+	}
+
+	// Проверка порядка дат, если обе переданы.
+	if r.DateFrom != nil && r.DateTo != nil {
+		dateFrom, _ := time.Parse(DateLayout, *r.DateFrom)
+		dateTo, _ := time.Parse(DateLayout, *r.DateTo)
+		if dateTo.Before(dateFrom) {
+			return "дата окончания не может быть раньше даты начала"
+		}
+	}
+
+	if r.BudgetRub != nil && *r.BudgetRub < 0 {
+		return "бюджет не может быть отрицательным"
+	}
+
+	if r.BudgetTier != nil && !ValidBudgetTiers[*r.BudgetTier] {
+		return "допустимые уровни бюджета: economy, comfort, premium"
+	}
+
+	if r.Transport != nil && !ValidTransports[*r.Transport] {
+		return "допустимые виды транспорта: car, public, walk, bike"
+	}
+
+	if r.GroupSize != nil && *r.GroupSize < 1 {
+		return "количество участников должно быть не менее 1"
+	}
+
+	if r.Format != nil && !ValidFormats[*r.Format] {
+		return "допустимые форматы поездки: day_trip, weekend, multi_day"
+	}
+
+	if r.VibeVectorID != nil && *r.VibeVectorID != "" {
+		if _, err := uuid.Parse(*r.VibeVectorID); err != nil {
+			return "vibe_vector_id должен быть валидным UUID"
+		}
 	}
 
 	return ""

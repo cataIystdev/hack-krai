@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -76,7 +77,14 @@ func (s *TripService) Create(ctx context.Context, creatorID uuid.UUID, req *mode
 		Transport:        req.Transport,
 		GroupSize:        req.GroupSize,
 		GroupComposition: req.GroupComposition,
+		Format:           req.Format,
 		Status:           models.TripStatusPlanning,
+	}
+
+	// Парсинг vibe_vector_id из DTO, если передан.
+	if req.VibeVectorID != "" {
+		vid, _ := uuid.Parse(req.VibeVectorID)
+		trip.VibeVectorID = &vid
 	}
 
 	// Вставка поездки в БД.
@@ -127,6 +135,88 @@ func (s *TripService) Create(ctx context.Context, creatorID uuid.UUID, req *mode
 	return &models.TripWithMembers{
 		Trip:    *createdTrip,
 		Members: []models.TripMember{*member},
+	}, nil
+}
+
+// Update обновляет поездку по переданным полям.
+// Доступно только создателю поездки. Обновляются только non-nil поля запроса.
+func (s *TripService) Update(ctx context.Context, tripID, userID uuid.UUID, req *models.UpdateTripRequest) (*models.TripWithMembers, error) {
+	// Проверка существования поездки и прав.
+	trip, err := s.tripRepo.FindByID(ctx, tripID)
+	if err != nil {
+		if errors.Is(err, database.ErrTripNotFound) {
+			return nil, ErrTripNotFound
+		}
+		return nil, err
+	}
+
+	// Только создатель может обновлять поездку.
+	if trip.CreatorID != userID {
+		return nil, ErrTripForbidden
+	}
+
+	// Формирование map обновляемых полей.
+	fields := make(map[string]any)
+
+	if req.DateFrom != nil {
+		dateFrom, _ := time.Parse(models.DateLayout, *req.DateFrom)
+		fields["date_from"] = dateFrom
+	}
+	if req.DateTo != nil {
+		dateTo, _ := time.Parse(models.DateLayout, *req.DateTo)
+		fields["date_to"] = dateTo
+	}
+	if req.BudgetRub != nil {
+		fields["budget_rub"] = *req.BudgetRub
+	}
+	if req.BudgetTier != nil {
+		fields["budget_tier"] = *req.BudgetTier
+	}
+	if req.Transport != nil {
+		fields["transport"] = *req.Transport
+	}
+	if req.GroupSize != nil {
+		fields["group_size"] = *req.GroupSize
+	}
+	if req.GroupComposition != nil {
+		fields["group_composition"] = *req.GroupComposition
+	}
+	if req.Format != nil {
+		fields["format"] = *req.Format
+	}
+	if req.VibeVectorID != nil {
+		if *req.VibeVectorID == "" {
+			fields["vibe_vector_id"] = nil
+		} else {
+			vid, _ := uuid.Parse(*req.VibeVectorID)
+			fields["vibe_vector_id"] = vid
+		}
+	}
+
+	// Обновление в БД.
+	updatedTrip, err := s.tripRepo.Update(ctx, tripID, fields)
+	if err != nil {
+		if errors.Is(err, database.ErrTripNotFound) {
+			return nil, ErrTripNotFound
+		}
+		return nil, err
+	}
+
+	// Загрузка участников.
+	members, err := s.tripRepo.FindMembersByTripID(ctx, tripID)
+	if err != nil {
+		members = []models.TripMember{}
+	}
+
+	s.logger.Info("поездка обновлена",
+		zap.String("trip_id", tripID.String()),
+		zap.String("user_id", userID.String()),
+		zap.Int("fields_updated", len(fields)),
+	)
+
+	return &models.TripWithMembers{
+		Trip:    *updatedTrip,
+		Members: members,
 	}, nil
 }
 
