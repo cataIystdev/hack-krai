@@ -192,6 +192,10 @@ services:
     restart: unless-stopped
     ports:
       - "${VOSK_PORT:-2700}:2700"
+    environment:
+      - VOSK_SAMPLE_RATE=16000
+    volumes:
+      - ./vosk/asr_server.py:/opt/vosk-server/websocket/asr_server.py:ro
     healthcheck:
       test: ["CMD-SHELL", "exit 0"]
       interval: 30s
