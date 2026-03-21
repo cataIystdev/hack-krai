@@ -244,9 +244,15 @@ func (s *VibeService) Swipe(ctx context.Context, userID uuid.UUID, sceneID strin
 	userVector, err := s.vibeRepo.GetVibeVector(ctx, database.CollectionUserVibes, userID)
 	if err != nil {
 		if errors.Is(err, database.ErrVectorNotFound) {
-			return database.ErrVectorNotFound
+			// У пользователя ещё нет вектора — первый свайп создаёт его.
+			// Используем вектор сцены как начальную точку (или инвертированный при left).
+			s.logger.Info("вектор пользователя не найден, создаём из первого свайпа",
+				zap.String("user_id", userID.String()),
+			)
+			userVector = nil // обработаем ниже после получения sceneVector
+		} else {
+			return fmt.Errorf("ошибка получения вектора пользователя: %w", err)
 		}
-		return fmt.Errorf("ошибка получения вектора пользователя: %w", err)
 	}
 
 	// Получение вектора сцены из Qdrant.
@@ -264,8 +270,22 @@ func (s *VibeService) Swipe(ctx context.Context, userID uuid.UUID, sceneID strin
 		return nil
 	}
 
-	// Математический сдвиг вектора.
-	newVector := shiftVector(userVector, sceneVector, direction)
+	// Математический сдвиг вектора (или создание начального).
+	var newVector []float32
+	if userVector == nil {
+		// Первый свайп — создаём начальный вектор.
+		if direction == models.SwipeRight {
+			// Нравится → вектор сцены как начальная точка.
+			newVector = make([]float32, len(sceneVector))
+			copy(newVector, sceneVector)
+		} else {
+			// Не нравится → пропускаем, невозможно «уйти от» без начальной точки.
+			s.logger.Info("первый свайп влево без вектора — пропускаем")
+			return nil
+		}
+	} else {
+		newVector = shiftVector(userVector, sceneVector, direction)
+	}
 
 	// Upsert обновлённого вектора.
 	if err := s.vibeRepo.UpsertVibeVector(ctx, database.CollectionUserVibes, userID, newVector, nil); err != nil {
