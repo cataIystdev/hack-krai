@@ -188,18 +188,23 @@ Backend планируется так, чтобы:
 3. storytelling
 4. host onboarding
 5. booking
-6. reviews/karma/hidden gems
-7. analytics/B2G
+6. reviews/karma/hidden gems logic
+7. analytics/B2G endpoints
 8. sync/offline support endpoints
 
 ### Что это значит для планирования
 
 Backend roadmap покрывает полный demo-first контур:
 
-- Фазы 0-5 завершены.
+- Фазы 0-6 завершены.
 - Фаза 5.5 (техническое усиление) -- ЗАВЕРШЕНА.
 - Demo-first flow полностью функционален: voice -> vibe -> swipe -> finalize -> map -> location detail.
-- Основные оставшиеся gap-ы: weather, live routing, storytelling, booking, B2G.
+- Core MVP закрыт частично глубже demo-first: trip details, invite/join, route preview, auth hardening.
+- Основные оставшиеся gap-ы: merged group vibe, trip-aware route build, host onboarding, booking, storytelling, weather/live routing, analytics/B2G.
+- После code review выявлены отдельные P0 архитектурные долги в trip/auth-контуре:
+  - privacy/access control для trip detail и members;
+  - неконсистентный auth contract для public/auth join flow;
+  - отсутствие по-настоящему безопасной capacity guarantee при конкурентных join.
 
 ---
 
@@ -657,7 +662,8 @@ scenes -> swipe -> finalize -> recommendations.
      - бизнес-инварианта "в поездке не больше N участников" не гарантируется атомарно;
      - под нагрузкой система может вести себя неконсистентно;
      - на review это классический признак отсутствия транзакционной защиты важного ограничения.
-   - **Исправлено:** Метод `AddMemberAtomic()` — INSERT ... SELECT WHERE (SELECT count(\*) ...) < maxGroupSize. Один SQL-запрос вместо двух.
+   - **Частично исправлено:** Добавлен `AddMemberAtomic()` — `INSERT ... SELECT WHERE (SELECT count(\*) ...) < maxGroupSize`.
+   - **Оставшийся риск:** это лучше, чем два раздельных запроса, но всё ещё не даёт строгой гарантии против overbooking при конкурентных транзакциях. Нужен отдельный post-review fix в trip repository / transaction model.
 
 3. Swipe logic mismatch:
    - scene vectors читаются из `user_vibes`;
@@ -708,7 +714,7 @@ scenes -> swipe -> finalize -> recommendations.
 ### Критерии готовности -- выполнены
 
 1. No obvious panic-level traps remain in demo-touched code -- media nil-guard закрывает единственный panic-path.
-2. Core endpoints stop relying on brittle demo assumptions -- scene vectors изолированы, trip join атомарен.
+2. Core endpoints stop relying on brittle demo assumptions -- scene vectors изолированы, для trip join добавлена первичная защита от очевидной гонки.
 3. MVP work can continue on top of safer contracts and safer runtime behavior -- все 5 исправлений применены.
 
 ---
@@ -832,6 +838,19 @@ scenes -> swipe -> finalize -> recommendations.
 2. ✅ Frontend может честно сохранять форму через `POST /api/v1/trips` и редактировать через `PUT /api/v1/trips/{id}`
 3. ✅ Trip можно использовать в route planning (все необходимые поля присутствуют)
 
+### Post-review follow-up tasks
+
+1. Ограничить доступ к `GET /api/v1/trips/{id}`:
+   - detail должен быть доступен только creator/member/admin согласно явной privacy policy;
+   - service layer должен принимать `currentUserID` и делать resource-level access check, а не только JWT-проверку на уровне router.
+2. Ограничить доступ к `GET /api/v1/trips/{id}/members`:
+   - members endpoint не должен раскрывать состав чужой поездки любому авторизованному пользователю;
+   - нужно синхронизировать policy между detail, members и invite flow.
+3. Зафиксировать privacy contract в OpenAPI и фазе handoff:
+   - какие trip-ресурсы публичны по invite-token;
+   - какие доступны только участникам;
+   - какие доступны только creator/admin.
+
 ### Frontend handoff
 
 После этой фазы фронт собирает production-like Trip Details screen. API полностью готово:
@@ -859,30 +878,36 @@ scenes -> swipe -> finalize -> recommendations.
 
 ### Current status
 
-Не реализовано.
+✅ Частично реализовано (route preview готов, trip-aware route ещё нет).
 
 ### Already implemented
 
-1. Building blocks exist:
-   - trips;
-   - locations;
-   - vectors;
-   - Neo4j connector.
+1. `POST /api/v1/route/build`
+2. HTTP handler + router registration
+3. `BuildRouteRequest` / `RoutePreview` contract
+4. deterministic route preview:
+   - ordered locations;
+   - distance via Haversine;
+   - transport-aware duration;
+   - stay duration per category.
+5. Frontend-usable payload для `/route` и map route panel.
 
 ### Gap to complete
 
-1. First route preview contract.
-2. Deterministic/demo-safe route summary.
-3. Future-proof endpoint shape for later real routing.
+1. `POST /api/v1/trips/{id}/build-route`
+2. trip-aware filtering по budget/date/group/format
+3. merged vibe integration
+4. richer route summary / reasons-fit / optional polyline
+5. Neo4j-backed graph routing вместо только Haversine preview
 
 ### Next handoff
 
-Frontend route and final CTA flow should wait for at least preview-grade route payload.
+Frontend уже может работать на preview-grade payload. Следующий handoff -- trip-aware build-route без ломки контракта.
 
 ### Deliverables
 
-1. `POST /api/v1/route/build`
-2. Later `POST /api/v1/trips/{id}/build-route`
+1. ✅ `POST /api/v1/route/build`
+2. ⏳ `POST /api/v1/trips/{id}/build-route`
 3. Response:
    - ordered locations
    - estimated time
@@ -912,8 +937,8 @@ Frontend route and final CTA flow should wait for at least preview-grade route p
 
 ### Acceptance criteria
 
-1. Уже на этапе 7A endpoint usable из UI.
-2. 7B и 7C не ломают контракт.
+1. ✅ Уже на этапе 7A endpoint usable из UI.
+2. 🔶 7B и 7C не должны ломать контракт.
 
 ---
 
@@ -932,19 +957,26 @@ Frontend route and final CTA flow should wait for at least preview-grade route p
 
 ### Current status
 
-Частично реализовано.
+🔶 Частично реализовано.
 
 ### Already implemented
 
 1. invite regeneration
 2. join endpoint
 3. members endpoint
+4. trip member atomic join guard against overflow
+5. `MergeGroupVibes()` stub and repository support for `merged_vibe_vector_id`
 
 ### Gap to complete
 
 1. merged vibe
 2. participant preference enrichment
 3. route integration
+4. invite/join auth-flex polish and end-to-end trip route handoff
+5. membership/privacy checks for detail and members endpoints
+6. authenticated join должен корректно связывать `trip_member` с `user_id`, а не деградировать в анонимный join
+7. duplicate prevention и member identity должны одинаково работать для invite-based и auth-based сценариев
+8. заменить текущий `AddMemberAtomic()` на решение со строгой capacity guarantee под concurrency
 
 ### Next handoff
 
@@ -968,6 +1000,9 @@ Frontend later can build group UI mostly on top of existing trip APIs.
 
 - merge participant vectors;
 - compromise-aware route.
+- private trip data visible only to allowed participants/roles;
+- invite flow and authenticated join share one consistent identity model;
+- group size invariant гарантирован даже при параллельных join.
 
 ---
 
@@ -983,7 +1018,7 @@ Frontend later can build group UI mostly on top of existing trip APIs.
 
 ### Current status
 
-Базово уже реализовано.
+🔶 Частично реализовано.
 
 ### Already implemented
 
@@ -992,11 +1027,16 @@ Frontend later can build group UI mostly on top of existing trip APIs.
 3. refresh
 4. JWT middleware
 5. RBAC middleware
+6. `/profile/me` read/update
+7. health/live/ready probes and OpenAPI docs
 
 ### Gap to complete
 
-1. Add only those auth-support helpers that frontend truly needs.
-2. Avoid overbuilding auth while map/recommendation demo blockers remain higher priority.
+1. session UX helpers only if frontend really needs them
+2. auth bootstrap / demo-user convenience only if it reduces integration friction
+3. verify all protected endpoints consistently use RBAC where intended
+4. audit endpoints with mixed public/auth semantics so that handlers do not rely on JWT context when middleware is absent
+5. align JWT-only protection with resource-level authorization for trip/member data
 
 ### Deliverables
 
@@ -1004,6 +1044,7 @@ Frontend later can build group UI mostly on top of existing trip APIs.
 2. Role checks
 3. demo user bootstrap
 4. session UX helper endpoints if needed
+5. protected/public endpoint audit with explicit authorization matrix
 
 ### Why now
 
@@ -1023,6 +1064,10 @@ Auth не должен блокировать demo-first сборку UI, но �
 
 - GDD Feature 5
 - Zero-UI onboarding pipeline
+
+### Current status
+
+❌ Не реализовано.
 
 ### Deliverables
 
@@ -1054,6 +1099,10 @@ Auth не должен блокировать demo-first сборку UI, но �
 
 - GDD Feature 6
 
+### Current status
+
+❌ Не реализовано.
+
 ### Deliverables
 
 1. booking slots schema and endpoints
@@ -1081,6 +1130,10 @@ Auth не должен блокировать demo-first сборку UI, но �
 - части GDD Feature 2
 - части offline/live сценариев
 
+### Current status
+
+❌ Не реализовано.
+
 ### Deliverables
 
 1. `GET /api/v1/weather/region`
@@ -1102,6 +1155,16 @@ Auth не должен блокировать demo-first сборку UI, но �
 
 - GDD Feature 7
 
+### Current status
+
+❌ Не реализовано как feature slice.
+
+### Already implemented
+
+1. schema/data foundation for `access_level`
+2. `karma` field in users
+3. hidden/semi-open enums in models and migrations
+
 ### Deliverables
 
 1. reviews
@@ -1122,6 +1185,15 @@ Auth не должен блокировать demo-first сборку UI, но �
 Прямое покрытие:
 
 - GDD Feature 8
+
+### Current status
+
+❌ Не реализовано как product/API slice.
+
+### Already implemented
+
+1. ClickHouse connection layer
+2. health visibility for ClickHouse in infra/ops contour
 
 ### Deliverables
 
@@ -1154,6 +1226,59 @@ Auth не должен блокировать demo-first сборку UI, но �
 8. Analytics + B2G
 9. Offline sync support endpoints
 10. WebSocket channels
+
+### Current status
+
+🔶 Частично реализовано как foundation only.
+
+### Already implemented
+
+1. infra connectors for PostgreSQL, Redis, Qdrant, Neo4j, ClickHouse, MinIO
+2. tourist core demo-first API
+3. auth/profile/trips/map/locations/media/route preview base
+
+### Gap to complete
+
+1. full host/business slice
+2. booking/inventory
+3. live/weather/storytelling
+4. hidden gems logic
+5. analytics/B2G APIs
+6. offline/sync
+7. websocket channels
+8. trip privacy / membership authorization model fully enforced
+9. consistent authenticated/public join contract
+10. strict concurrency-safe trip capacity enforcement
+
+---
+
+## Архитектурный backlog после code review
+
+### P0 -- обязательно до уверенного MVP
+
+1. **Trip privacy and access control**
+   - закрыть несанкционированный доступ к `GET /api/v1/trips/{id}` и `GET /api/v1/trips/{id}/members`;
+   - внедрить resource-level authorization в service layer;
+   - формализовать matrix доступа: creator / member / admin / invite-only.
+
+2. **Join auth contract**
+   - разделить и явно описать public invite join и authenticated join;
+   - убрать зависимость handler/service от `user_id` в контексте там, где JWT middleware не применяется;
+   - гарантировать корректную привязку `trip_member.user_id` для залогиненных участников.
+
+3. **Concurrency-safe trip capacity**
+   - заменить текущую count-based вставку на решение, которое реально держит инвариант `members <= group_size` под параллельной нагрузкой;
+   - покрыть этот сценарий интеграционным concurrency-тестом.
+
+### P1 -- сразу после P0
+
+1. Синхронизировать OpenAPI, router и service contracts для всех trip/group endpoint-ов.
+2. Добавить явные acceptance criteria на privacy/auth behavior для invite/group flows.
+
+### P2 -- до полного закрытия GDD
+
+1. Довести merged group vibe до рабочей интеграции с route planning.
+2. Расширить participant mini-profile и compromise logic для group planning.
 
 ---
 

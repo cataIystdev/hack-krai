@@ -2,6 +2,8 @@
 
 > **48 часов хакатона. 15 фаз. Тестируем по чуть-чуть — не теряем контроль.**
 
+> **Актуализация на 21.03.2026:** этот документ сохраняет исходную фазную декомпозицию хакатона, но ниже статусы отдельных фаз частично устарели. Для актуального product-level статуса ориентироваться также на [roadmap.md](/c:/Users/lowcoware/Projects/hack-krai/roadmap.md). Ниже статусы ключевых фаз синхронизированы с текущим кодом.
+
 ---
 
 ## Обзор таймлайна
@@ -25,6 +27,26 @@
 | 13  | Demo Polish + Хардкод для демо            | 2-3ч   | Все фазы    | 🔴 Финал         |
 
 **Итого**: ~30-38 часов чистого кодинга. При параллельной работе агентов — укладываемся в 48ч хакатона с запасом.
+
+## Актуальный статус фаз
+
+| Фаза | Статус по коду |
+| --- | --- |
+| 0 | ✅ Реализовано |
+| 1 | ✅ Реализовано |
+| 2 | ✅ Реализовано |
+| 2.5 | ✅ Реализовано частично глубже initial scope |
+| 3 | ✅ Реализовано |
+| 4 | ✅ Реализовано |
+| 5 | ✅ Реализовано частично в demo/MVP объёме |
+| 6 | ✅ Частично реализовано |
+| 7 | ❌ Не реализовано |
+| 8 | ❌ Не реализовано |
+| 9 | ❌ Не реализовано |
+| 10 | ❌ Не реализовано |
+| 11 | ❌ Не реализовано |
+| 12 | ❌ Не реализовано |
+| 13 | 🔶 Частично реализовано как demo hardening/foundation, но не как полный polish-slice |
 
 ---
 
@@ -266,6 +288,10 @@ curl "http://localhost:8080/api/v1/locations?category=winery&min_lat=44&max_lat=
 
 > **Цель**: Поездка = объект с датами, бюджетом, транспортом, группой. Участники могут присоединяться по ссылке.
 
+### Текущий статус
+
+✅ Реализовано частично, но с незакрытыми архитектурными хвостами в trip/group контуре.
+
 ### Что делаем
 
 1. **Trip Service** (`internal/services/trip/`):
@@ -333,6 +359,17 @@ curl "http://localhost:8080/api/v1/locations?density=green"
 curl "http://localhost:8080/api/v1/locations?child_friendly=true"
 # 200, только места подходящие для детей
 ```
+
+### Незавершённые задачи после code review
+
+1. `GET /api/v1/trips/{id}` должен быть закрыт resource-level authorization:
+   - detail не должен быть доступен любому авторизованному пользователю;
+   - нужны явные правила доступа для `creator/member/admin`.
+2. `GET /api/v1/trips/{id}/members` должен иметь ту же privacy policy, что и trip detail.
+3. Public join и authenticated join должны быть разведены в явный контракт:
+   - сейчас нельзя полагаться на `user_id` в контексте там, где JWT middleware не подключён;
+   - для залогиненного участника нужна гарантированная привязка `trip_member.user_id`.
+4. Инвариант `members <= group_size` должен быть обеспечен строго под concurrency, а не только через count-based вставку.
 
 ---
 
@@ -527,6 +564,27 @@ curl -o test.splat "<signed_url>"
 
 > **Цель**: Граф дорог в Neo4j, построение маршрутов (Dijkstra/A\*), динамическое изменение весов.
 
+### Текущий статус
+
+🔶 Частично реализовано.
+
+### Что реально есть в коде
+
+1. `POST /api/v1/route/build`
+2. handler + service + models для route preview
+3. детерминированный расчёт distance/duration по списку `location_ids`
+4. transport-aware estimate
+5. payload пригоден для фронтового route builder
+
+### Что ещё не реализовано
+
+1. сохранение маршрутов как отдельной сущности route/route_points
+2. `POST /api/v1/trips/{id}/build-route`
+3. Neo4j graph routing в runtime
+4. live rebuild
+5. weather-aware penalties
+6. route/trip flow нельзя считать безопасно завершённым, пока trip/group authorization model не закрыта
+
 ### Что делаем
 
 1. **Neo4j graph setup**:
@@ -606,6 +664,15 @@ docker compose exec neo4j cypher-shell \
 
 > **Цель**: Бронирование, каскад подтверждений (сайт → звонок), WebSocket-пуши.
 
+### Текущий статус
+
+❌ Не реализовано.
+
+### Что есть только как foundation
+
+1. schema/infra connectors позволяют позже добавить booking slice
+2. notification/websocket зависимости частично присутствуют в go.mod / архитектуре, но не собраны в feature
+
 ### Что делаем
 
 1. **Booking Service** (`internal/services/booking/`):
@@ -668,6 +735,10 @@ curl -X POST http://localhost:8080/api/v1/webhooks/telephony \
 
 > **Цель**: Генерация аудио-историй для POI маршрута через LLM + ElevenLabs.
 
+### Текущий статус
+
+❌ Не реализовано.
+
 ### Что делаем
 
 1. **Storytelling Service** (`internal/services/storytelling/`):
@@ -723,6 +794,10 @@ curl -o story.mp3 "<audio_url>"
 
 > **Цель**: Получение реальной погоды, кэширование, пуш обновлений для 3D-карты, триггер перестройки маршрута.
 
+### Текущий статус
+
+❌ Не реализовано.
+
 ### Что делаем
 
 1. **Weather Service** (`internal/services/weather/`):
@@ -763,6 +838,16 @@ wscat -c "ws://localhost:8080/ws/v1/weather?token=<jwt>"
 ## Фаза 10: Zero-UI Онбординг (Полный Pipeline)
 
 > **Цель**: Владелец записывает голосовое + видео → AI создаёт полную страницу с 3D.
+
+### Текущий статус
+
+❌ Не реализовано.
+
+### Что уже есть рядом
+
+1. media upload
+2. location create/update/delete
+3. vibe/media/AI foundation, которую можно переиспользовать в onboarding pipeline
 
 ### Что делаем
 
@@ -817,6 +902,16 @@ curl "http://localhost:8080/api/v1/locations/<location_id>/slots?month=2026-04"
 ## Фаза 11: Analytics Pipeline (ClickHouse)
 
 > **Цель**: Стриминг событий в ClickHouse, агрегация для B2G-дашборда.
+
+### Текущий статус
+
+❌ Не реализовано.
+
+### Что уже есть рядом
+
+1. ClickHouse connector
+2. health visibility для ClickHouse
+3. infra foundation без event ingestion layer
 
 ### Что делаем
 
@@ -878,6 +973,10 @@ docker compose exec clickhouse-client clickhouse-client \
 
 > **Цель**: API для дашборда Минтуризма — тепловые карты, предикции, проблемные зоны.
 
+### Текущий статус
+
+❌ Не реализовано.
+
 ### Что делаем
 
 1. **Analytics Service — B2G endpoints** (`internal/services/analytics/`):
@@ -928,6 +1027,24 @@ curl http://localhost:8080/api/v1/analytics/problematic-zones \
 ## Фаза 13: Demo Polish + Хардкод для демо
 
 > **Цель**: Всё должно работать как швейцарские часы на сцене. Никаких сюрпризов.
+
+### Текущий статус
+
+🔶 Частично реализовано.
+
+### Что реально закрыто
+
+1. demo-first tourist flow собран end-to-end
+2. health/live/ready split
+3. media/storage hardening
+4. trip join atomicity
+5. map/recommendation/location contracts стабилизированы
+
+### Что не стоит считать реализованным
+
+1. weather/storytelling/booking/B2G demo slices
+2. offline fallback layer
+3. end-to-end stage polish для всех поздних feature blocks
 
 ### Что делаем
 
@@ -1024,6 +1141,26 @@ gantt
 **Критический путь: 0 → 1 → 2 → 2.5 → 6 → 9 → 13 ≈ 17 часов**
 
 С параллельной работой агентов остальные треки (A, B, D) завершаются раньше критического пути.
+
+---
+
+## Архитектурный backlog после code review
+
+### P0
+
+1. Закрыть trip privacy/access control для `GET /api/v1/trips/{id}` и `GET /api/v1/trips/{id}/members`.
+2. Развести public invite join и authenticated join в один непротиворечивый auth contract.
+3. Обеспечить строгий concurrency-safe инвариант `members <= group_size`.
+
+### P1
+
+1. Синхронизировать OpenAPI, router и service contracts для trip/group endpoint-ов.
+2. Формализовать matrix доступа `creator/member/admin/invite-only` и привязать её к acceptance criteria фаз 2.5 и 6.
+
+### P2
+
+1. Довести merged group vibe и route handoff до честного end-to-end сценария.
+2. Добавить интеграционные проверки на privacy, join identity и parallel join.
 
 ---
 
