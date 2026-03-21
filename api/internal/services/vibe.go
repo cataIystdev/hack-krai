@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -277,67 +278,279 @@ func (s *VibeService) Swipe(ctx context.Context, userID uuid.UUID, sceneID strin
 	return nil
 }
 
-// Finalize выполняет финальный поиск Top-10 ближайших локаций на основе vibe-вектора.
+// Finalize выполняет финальный поиск Top-N ближайших локаций на основе vibe-вектора.
 // Берёт вектор пользователя из Qdrant (user_vibes) и ищет ближайшие в location_vibes.
-// Обогащает результаты данными из PostgreSQL (preview image, tags, координаты).
-func (s *VibeService) Finalize(ctx context.Context, userID uuid.UUID) (*models.FinalizeResponse, error) {
+// Обогащает результаты данными из PostgreSQL (preview image, tags, координаты и др.).
+// При отсутствии вектора пользователя возвращает curated demo набор.
+func (s *VibeService) Finalize(ctx context.Context, userID uuid.UUID, req *models.FinalizeRequest) (*models.FinalizeResponse, error) {
 	s.logger.Info("финализация профиля",
 		zap.String("user_id", userID.String()),
+		zap.Int("limit", req.Limit),
+		zap.Bool("child_friendly_only", req.ChildFriendlyOnly),
 	)
+
+	// Получение тегов пользователя из Qdrant payload для вычисления tags_match.
+	var userTags []string
+	userPayload := s.getUserPayloadTags(ctx, userID)
+	if userPayload != nil {
+		userTags = userPayload
+	}
 
 	// Получение вектора пользователя.
 	userVector, err := s.vibeRepo.GetVibeVector(ctx, database.CollectionUserVibes, userID)
 	if err != nil {
+		// Curated demo fallback: если вектора нет, возвращаем curated набор.
+		if errors.Is(err, database.ErrVectorNotFound) {
+			s.logger.Info("вектор не найден, используем curated demo набор",
+				zap.String("user_id", userID.String()),
+			)
+			return s.curatedDemoFallback(ctx, req)
+		}
 		return nil, fmt.Errorf("ошибка получения вектора пользователя: %w", err)
 	}
 
-	// Поиск Top-10 ближайших локаций.
-	recommendations, err := s.vibeRepo.SearchNearest(ctx, database.CollectionLocationVibes, userVector, 10)
+	// Поиск Top-N ближайших локаций (запрашиваем с запасом для фильтрации).
+	searchLimit := uint64(req.Limit * 2)
+	if searchLimit < 20 {
+		searchLimit = 20
+	}
+	recommendations, err := s.vibeRepo.SearchNearest(ctx, database.CollectionLocationVibes, userVector, searchLimit)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка поиска рекомендаций: %w", err)
 	}
 
 	// Обогащение рекомендаций данными из PostgreSQL.
-	if len(recommendations) > 0 && s.locationRepo != nil {
-		ids := make([]string, len(recommendations))
-		for i, rec := range recommendations {
-			ids[i] = rec.LocationID
+	recommendations = s.enrichRecommendations(ctx, recommendations, userTags, req)
+
+	return &models.FinalizeResponse{
+		Recommendations: recommendations,
+		TotalFound:      len(recommendations),
+		IsCurated:       false,
+	}, nil
+}
+
+// enrichRecommendations обогащает рекомендации данными из PostgreSQL.
+// Заполняет все поля LocationRecommendation: name, category, tags, coordinates,
+// reason_short, tags_match, child_friendly. Применяет фильтрацию по child_friendly_only.
+func (s *VibeService) enrichRecommendations(
+	ctx context.Context,
+	recommendations []models.LocationRecommendation,
+	userTags []string,
+	req *models.FinalizeRequest,
+) []models.LocationRecommendation {
+	if len(recommendations) == 0 || s.locationRepo == nil {
+		return recommendations
+	}
+
+	ids := make([]string, len(recommendations))
+	for i, rec := range recommendations {
+		ids[i] = rec.LocationID
+	}
+
+	locations, err := s.locationRepo.FindByIDs(ctx, ids)
+	if err != nil {
+		s.logger.Warn("ошибка обогащения рекомендаций, возвращаем базовые данные",
+			zap.Error(err),
+		)
+		return s.applyLimit(recommendations, req.Limit)
+	}
+
+	// Построение карты для быстрого поиска.
+	locMap := make(map[string]models.Location, len(locations))
+	for _, loc := range locations {
+		locMap[loc.ID.String()] = loc
+	}
+
+	enriched := make([]models.LocationRecommendation, 0, len(recommendations))
+	for _, rec := range recommendations {
+		if loc, ok := locMap[rec.LocationID]; ok {
+			// Фильтрация по child_friendly_only.
+			if req.ChildFriendlyOnly && !loc.ChildFriendly {
+				continue
+			}
+
+			rec.Name = loc.Name
+			rec.Category = loc.Category
+			rec.DescriptionShort = loc.DescriptionShort
+			rec.Tags = loc.Tags
+			rec.PreviewImageURL = loc.PreviewImageURL
+			rec.Latitude = loc.Latitude
+			rec.Longitude = loc.Longitude
+			rec.DensityLevel = string(loc.DensityLevel)
+			rec.ChildFriendly = loc.ChildFriendly
+			if loc.SplatURL != nil {
+				rec.SplatURL = *loc.SplatURL
+			}
+
+			// Вычисление совпавших тегов и генерация причины рекомендации.
+			rec.TagsMatch = computeTagsMatch(userTags, loc.Tags)
+			rec.ReasonShort = generateReasonShort(rec.Score, rec.TagsMatch, loc.Category)
+
+			enriched = append(enriched, rec)
+		}
+	}
+
+	return s.applyLimit(enriched, req.Limit)
+}
+
+// curatedDemoFallback возвращает curated демо-рекомендации из опубликованных локаций.
+// Используется, когда вектор пользователя ещё не создан (до голосового профилирования).
+// Рекомендации имеют синтетические score значения, убывающие от 0.95.
+func (s *VibeService) curatedDemoFallback(ctx context.Context, req *models.FinalizeRequest) (*models.FinalizeResponse, error) {
+	if s.locationRepo == nil {
+		return &models.FinalizeResponse{
+			Recommendations: []models.LocationRecommendation{},
+			TotalFound:      0,
+			IsCurated:       true,
+		}, nil
+	}
+
+	// Получение опубликованных локаций.
+	filter := &models.LocationFilter{
+		PerPage: req.Limit,
+		Page:    1,
+	}
+	filter.NormalizePagination()
+
+	locations, _, err := s.locationRepo.Search(ctx, filter)
+	if err != nil {
+		s.logger.Warn("ошибка получения curated локаций", zap.Error(err))
+		return &models.FinalizeResponse{
+			Recommendations: []models.LocationRecommendation{},
+			TotalFound:      0,
+			IsCurated:       true,
+		}, nil
+	}
+
+	recommendations := make([]models.LocationRecommendation, 0, len(locations))
+	for i, loc := range locations {
+		// Синтетический score: убывает от 0.95 с шагом 0.03.
+		syntheticScore := float32(0.95) - float32(i)*0.03
+		if syntheticScore < 0.40 {
+			syntheticScore = 0.40
 		}
 
-		locations, err := s.locationRepo.FindByIDs(ctx, ids)
-		if err != nil {
-			s.logger.Warn("ошибка обогащения рекомендаций, возвращаем базовые данные",
-				zap.Error(err),
-			)
-		} else {
-			// Построение карты для быстрого поиска.
-			locMap := make(map[string]models.Location, len(locations))
-			for _, loc := range locations {
-				locMap[loc.ID.String()] = loc
-			}
+		// Фильтрация по child_friendly_only.
+		if req.ChildFriendlyOnly && !loc.ChildFriendly {
+			continue
+		}
 
-			for i, rec := range recommendations {
-				if loc, ok := locMap[rec.LocationID]; ok {
-					recommendations[i].Name = loc.Name
-					recommendations[i].Category = loc.Category
-					recommendations[i].DescriptionShort = loc.DescriptionShort
-					recommendations[i].Tags = loc.Tags
-					recommendations[i].PreviewImageURL = loc.PreviewImageURL
-					recommendations[i].Latitude = loc.Latitude
-					recommendations[i].Longitude = loc.Longitude
-					recommendations[i].DensityLevel = string(loc.DensityLevel)
-					if loc.SplatURL != nil {
-						recommendations[i].SplatURL = *loc.SplatURL
-					}
-				}
-			}
+		rec := models.LocationRecommendation{
+			LocationID:       loc.ID.String(),
+			Score:            syntheticScore,
+			Name:             loc.Name,
+			Category:         loc.Category,
+			DescriptionShort: loc.DescriptionShort,
+			Tags:             loc.Tags,
+			PreviewImageURL:  loc.PreviewImageURL,
+			Latitude:         loc.Latitude,
+			Longitude:        loc.Longitude,
+			DensityLevel:     string(loc.DensityLevel),
+			ChildFriendly:    loc.ChildFriendly,
+			TagsMatch:        []string{},
+			ReasonShort:      generateReasonShort(syntheticScore, nil, loc.Category),
+		}
+		if loc.SplatURL != nil {
+			rec.SplatURL = *loc.SplatURL
+		}
+
+		recommendations = append(recommendations, rec)
+		if len(recommendations) >= req.Limit {
+			break
 		}
 	}
 
 	return &models.FinalizeResponse{
 		Recommendations: recommendations,
 		TotalFound:      len(recommendations),
+		IsCurated:       true,
 	}, nil
+}
+
+// getUserPayloadTags извлекает теги пользователя из Qdrant payload.
+// Возвращает nil при ошибке или отсутствии тегов.
+func (s *VibeService) getUserPayloadTags(ctx context.Context, userID uuid.UUID) []string {
+	payload, err := s.vibeRepo.GetVibePayload(ctx, database.CollectionUserVibes, userID)
+	if err != nil {
+		return nil
+	}
+	if tags, ok := payload["tags"]; ok {
+		if tagList, ok := tags.([]any); ok {
+			result := make([]string, 0, len(tagList))
+			for _, t := range tagList {
+				if s, ok := t.(string); ok {
+					result = append(result, s)
+				}
+			}
+			return result
+		}
+	}
+	return nil
+}
+
+// applyLimit обрезает массив рекомендаций до заданного лимита.
+func (s *VibeService) applyLimit(recs []models.LocationRecommendation, limit int) []models.LocationRecommendation {
+	if len(recs) <= limit {
+		return recs
+	}
+	return recs[:limit]
+}
+
+// generateReasonShort генерирует краткую причину рекомендации на русском языке.
+// Причина формируется на основе cosine similarity score, совпавших тегов и категории.
+func generateReasonShort(score float32, tagsMatch []string, category string) string {
+	var parts []string
+
+	// Оценка по score.
+	switch {
+	case score >= 0.90:
+		parts = append(parts, "Идеальное совпадение")
+	case score >= 0.75:
+		parts = append(parts, "Высокое совпадение")
+	case score >= 0.60:
+		parts = append(parts, "Хорошее совпадение")
+	default:
+		parts = append(parts, "Подходит вам")
+	}
+
+	// Добавление совпавших тегов.
+	if len(tagsMatch) > 0 {
+		maxTags := 3
+		if len(tagsMatch) < maxTags {
+			maxTags = len(tagsMatch)
+		}
+		parts = append(parts, strings.Join(tagsMatch[:maxTags], ", "))
+	} else if category != "" {
+		// Если тегов нет, показываем категорию.
+		parts = append(parts, category)
+	}
+
+	return strings.Join(parts, ": ")
+}
+
+// computeTagsMatch вычисляет пересечение тегов пользователя и локации.
+// Возвращает массив совпавших тегов или пустой массив.
+func computeTagsMatch(userTags, locationTags []string) []string {
+	if len(userTags) == 0 || len(locationTags) == 0 {
+		return []string{}
+	}
+
+	userSet := make(map[string]bool, len(userTags))
+	for _, tag := range userTags {
+		userSet[strings.ToLower(strings.TrimSpace(tag))] = true
+	}
+
+	matched := make([]string, 0)
+	seen := make(map[string]bool)
+	for _, tag := range locationTags {
+		normalized := strings.ToLower(strings.TrimSpace(tag))
+		if userSet[normalized] && !seen[normalized] {
+			matched = append(matched, tag)
+			seen[normalized] = true
+		}
+	}
+
+	return matched
 }
 
 // GetScenes возвращает все сцены свайпа для анкеты.

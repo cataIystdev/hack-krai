@@ -284,3 +284,59 @@ func (r *VibeRepository) UpdateVibeVectorID(ctx context.Context, userID uuid.UUI
 	)
 	return nil
 }
+
+// GetVibePayload получает payload точки из Qdrant без вектора.
+// Возвращает карту ключ-значение из payload или nil при ошибке.
+// Используется для извлечения тегов пользователя при вычислении tags_match.
+func (r *VibeRepository) GetVibePayload(ctx context.Context, collection string, pointID uuid.UUID) (map[string]any, error) {
+	idStr := pointID.String()
+	withPayload := true
+
+	resp, err := r.qdrant.Points.Get(ctx, &pb.GetPoints{
+		CollectionName: collection,
+		Ids: []*pb.PointId{
+			{PointIdOptions: &pb.PointId_Uuid{Uuid: idStr}},
+		},
+		WithPayload: &pb.WithPayloadSelector{
+			SelectorOptions: &pb.WithPayloadSelector_Enable{Enable: withPayload},
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("ошибка получения payload из Qdrant: %w", err)
+	}
+
+	if len(resp.GetResult()) == 0 {
+		return nil, ErrVectorNotFound
+	}
+
+	point := resp.GetResult()[0]
+	payload := point.GetPayload()
+	if payload == nil {
+		return nil, nil
+	}
+
+	// Конвертация Qdrant payload в стандартную map[string]any.
+	result := make(map[string]any, len(payload))
+	for k, v := range payload {
+		switch kind := v.GetKind().(type) {
+		case *pb.Value_StringValue:
+			result[k] = kind.StringValue
+		case *pb.Value_DoubleValue:
+			result[k] = kind.DoubleValue
+		case *pb.Value_IntegerValue:
+			result[k] = kind.IntegerValue
+		case *pb.Value_BoolValue:
+			result[k] = kind.BoolValue
+		case *pb.Value_ListValue:
+			items := make([]any, 0, len(kind.ListValue.GetValues()))
+			for _, item := range kind.ListValue.GetValues() {
+				if sv := item.GetStringValue(); sv != "" {
+					items = append(items, sv)
+				}
+			}
+			result[k] = items
+		}
+	}
+
+	return result, nil
+}

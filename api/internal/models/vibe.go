@@ -122,7 +122,8 @@ type VoiceProfileResponse struct {
 }
 
 // LocationRecommendation — рекомендация локации на основе vibe-профиля.
-// Содержит все поля, необходимые фронтенду для рендеринга карточки рекомендации.
+// Содержит все поля, необходимые фронтенду для рендеринга карточки рекомендации,
+// включая reason_short (причина рекомендации) и tags_match (совпавшие теги).
 type LocationRecommendation struct {
 	// LocationID — UUID локации.
 	LocationID string `json:"location_id"`
@@ -156,6 +157,38 @@ type LocationRecommendation struct {
 
 	// DensityLevel — уровень туристической плотности (red/yellow/green).
 	DensityLevel string `json:"density_level"`
+
+	// ReasonShort — краткая причина рекомендации на русском языке.
+	// Генерируется на основе cosine score и совпадения тегов.
+	// Пример: "Высокое совпадение: природа, спокойствие".
+	ReasonShort string `json:"reason_short"`
+
+	// TagsMatch — теги, совпавшие между профилем пользователя и локацией.
+	// Пустой массив, если пересечения нет.
+	TagsMatch []string `json:"tags_match"`
+
+	// ChildFriendly — подходит ли локация для детей.
+	ChildFriendly bool `json:"child_friendly"`
+}
+
+// FinalizeRequest — опциональные параметры запроса финализации профиля.
+// Все поля опциональны. При пустом теле запроса используются значения по умолчанию.
+type FinalizeRequest struct {
+	// Limit — максимальное количество рекомендаций (по умолчанию 10, максимум 50).
+	Limit int `json:"limit,omitempty"`
+
+	// ChildFriendlyOnly — фильтровать только child-friendly локации.
+	ChildFriendlyOnly bool `json:"child_friendly_only,omitempty"`
+}
+
+// NormalizeDefaults устанавливает значения по умолчанию для FinalizeRequest.
+func (r *FinalizeRequest) NormalizeDefaults() {
+	if r.Limit <= 0 {
+		r.Limit = 10
+	}
+	if r.Limit > 50 {
+		r.Limit = 50
+	}
 }
 
 // FinalizeResponse — ответ на запрос финализации профиля.
@@ -165,4 +198,8 @@ type FinalizeResponse struct {
 
 	// TotalFound — общее количество найденных совпадений.
 	TotalFound int `json:"total_found"`
+
+	// IsCurated — true, если рекомендации из curated demo набора
+	// (вектор пользователя не найден, используется fallback).
+	IsCurated bool `json:"is_curated"`
 }

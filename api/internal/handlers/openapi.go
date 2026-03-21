@@ -691,14 +691,35 @@ func OpenAPISpec(baseURL string) map[string]any {
 			"/api/v1/profile/finalize": map[string]any{
 				"post": map[string]any{
 					"tags":        []string{"Профилирование"},
-					"summary":     "Финализация профиля",
-					"description": "Берёт вibe-вектор пользователя из Qdrant и ищет Top-10 ближайших локаций по cosine similarity.",
+					"summary":     "Финализация профиля и получение рекомендаций",
+					"description": "Берёт vibe-вектор пользователя из Qdrant и ищет Top-N ближайших локаций по cosine similarity. При отсутствии вектора возвращает curated demo набор (is_curated=true). Тело запроса опционально.",
 					"operationId": "finalizeProfile",
 					"security":    []map[string]any{{"BearerAuth": []string{}}},
+					"requestBody": map[string]any{
+						"required":    false,
+						"description": "Опциональные параметры финализации.",
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/FinalizeRequest"},
+							},
+						},
+					},
 					"responses": map[string]any{
-						"200": map[string]any{"description": "Top-10 рекомендаций с location_id, score, name, category."},
+						"200": map[string]any{
+							"description": "Top-N рекомендаций с обогащёнными данными.",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{
+										"type": "object",
+										"properties": map[string]any{
+											"success": map[string]any{"type": "boolean"},
+											"data":    map[string]any{"$ref": "#/components/schemas/FinalizeResponse"},
+										},
+									},
+								},
+							},
+						},
 						"401": map[string]any{"description": "Отсутствует или невалидный токен."},
-						"404": map[string]any{"description": "Вектор пользователя не найден (профилирование не пройдено)."},
 					},
 				},
 			},
@@ -1167,22 +1188,31 @@ func OpenAPISpec(baseURL string) map[string]any {
 						"culture_vs_adventure": map[string]any{"type": "number", "description": "Культура vs приключения (-1.0 to 1.0).", "example": 0.3},
 					},
 				},
+				"FinalizeRequest": map[string]any{
+					"type":        "object",
+					"description": "Опциональные параметры запроса финализации профиля.",
+					"properties": map[string]any{
+						"limit":               map[string]any{"type": "integer", "default": 10, "maximum": 50, "description": "Максимальное количество рекомендаций."},
+						"child_friendly_only": map[string]any{"type": "boolean", "default": false, "description": "Фильтровать только детские локации."},
+					},
+				},
 				"FinalizeResponse": map[string]any{
 					"type":        "object",
-					"description": "Результат финализации профиля (Top-10 рекомендаций).",
+					"description": "Результат финализации профиля с обогащёнными рекомендациями.",
 					"properties": map[string]any{
-						"recommendations": map[string]any{"type": "array", "items": map[string]any{"$ref": "#/components/schemas/LocationRecommendation"}, "description": "Top-10 локаций."},
+						"recommendations": map[string]any{"type": "array", "items": map[string]any{"$ref": "#/components/schemas/LocationRecommendation"}, "description": "Top-N рекомендованных локаций."},
 						"total_found":     map[string]any{"type": "integer", "description": "Количество найденных совпадений."},
+						"is_curated":      map[string]any{"type": "boolean", "description": "true, если рекомендации из curated demo набора (вектор не найден)."},
 					},
 				},
 				"LocationRecommendation": map[string]any{
 					"type":        "object",
-					"description": "Рекомендация локации для карточки на фронтенде.",
+					"description": "Обогащённая рекомендация локации для карточки на фронтенде.",
 					"properties": map[string]any{
 						"location_id":       map[string]any{"type": "string", "format": "uuid", "description": "UUID локации."},
-						"score":             map[string]any{"type": "number", "description": "Cosine similarity (0-1)."},
-						"name":              map[string]any{"type": "string", "description": "Название локации."},
-						"category":          map[string]any{"type": "string", "description": "Категория."},
+						"score":             map[string]any{"type": "number", "description": "Cosine similarity (0-1).", "example": 0.92},
+						"name":              map[string]any{"type": "string", "description": "Название локации.", "example": "Винодельня Лефкадия"},
+						"category":          map[string]any{"type": "string", "description": "Категория.", "example": "winery"},
 						"description_short": map[string]any{"type": "string", "description": "Краткое описание для карточки."},
 						"tags":              map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Теги локации."},
 						"preview_image_url": map[string]any{"type": "string", "description": "URL hero-изображения."},
@@ -1190,6 +1220,9 @@ func OpenAPISpec(baseURL string) map[string]any {
 						"latitude":          map[string]any{"type": "number", "description": "Широта (WGS84)."},
 						"longitude":         map[string]any{"type": "number", "description": "Долгота (WGS84)."},
 						"density_level":     map[string]any{"type": "string", "enum": []string{"red", "yellow", "green"}, "description": "Уровень туристической плотности."},
+						"reason_short":      map[string]any{"type": "string", "description": "Краткая причина рекомендации.", "example": "Высокое совпадение: природа, виноградник"},
+						"tags_match":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Совпавшие теги между профилем и локацией."},
+						"child_friendly":    map[string]any{"type": "boolean", "description": "Подходит для детей."},
 					},
 				},
 				"MapPoint": map[string]any{

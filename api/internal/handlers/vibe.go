@@ -154,7 +154,8 @@ func (h *VibeHandler) Swipe(c fiber.Ctx) error {
 }
 
 // Finalize обрабатывает POST /api/v1/profile/finalize.
-// Берёт vibe-вектор пользователя из Qdrant и ищет Top-10 ближайших локаций.
+// Берёт vibe-вектор пользователя из Qdrant и ищет Top-N ближайших локаций.
+// Принимает опциональный JSON body с параметрами limit и child_friendly_only.
 func (h *VibeHandler) Finalize(c fiber.Ctx) error {
 	// Извлечение user_id из JWT.
 	userIDStr, ok := c.Locals("user_id").(string)
@@ -173,8 +174,19 @@ func (h *VibeHandler) Finalize(c fiber.Ctx) error {
 		})
 	}
 
+	// Парсинг опционального тела запроса.
+	var req models.FinalizeRequest
+	if len(c.Body()) > 0 {
+		if err := c.Bind().JSON(&req); err != nil {
+			h.logger.Warn("ошибка парсинга FinalizeRequest, используются значения по умолчанию",
+				zap.Error(err),
+			)
+		}
+	}
+	req.NormalizeDefaults()
+
 	// Финализация и поиск рекомендаций.
-	result, err := h.vibeService.Finalize(c.Context(), userID)
+	result, err := h.vibeService.Finalize(c.Context(), userID, &req)
 	if err != nil {
 		h.logger.Error("ошибка финализации профиля",
 			zap.String("user_id", userIDStr),
