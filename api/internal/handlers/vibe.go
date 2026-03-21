@@ -6,10 +6,13 @@
 package handlers
 
 import (
+	"errors"
+
 	"github.com/gofiber/fiber/v3"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"kudytudy-api/internal/database"
 	"kudytudy-api/internal/models"
 	"kudytudy-api/internal/services"
 )
@@ -134,6 +137,14 @@ func (h *VibeHandler) Swipe(c fiber.Ctx) error {
 
 	// Выполнение свайпа.
 	if err := h.vibeService.Swipe(c.Context(), userID, req.SceneID, models.SwipeDirection(req.Direction)); err != nil {
+		// Если вектор пользователя не найден — профилирование не пройдено.
+		if errors.Is(err, database.ErrVectorNotFound) {
+			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{
+				"success": false,
+				"message": "сначала пройдите голосовое профилирование (POST /api/v1/profile/voice)",
+			})
+		}
+
 		h.logger.Error("ошибка свайпа",
 			zap.String("user_id", userIDStr),
 			zap.String("scene_id", req.SceneID),

@@ -139,6 +139,16 @@ func (r *VibeRepository) UpsertVibeVector(ctx context.Context, collection string
 				qdrantPayload[k] = &pb.Value{
 					Kind: &pb.Value_IntegerValue{IntegerValue: int64(val)},
 				}
+			case []string:
+				listValues := make([]*pb.Value, len(val))
+				for i, s := range val {
+					listValues[i] = &pb.Value{
+						Kind: &pb.Value_StringValue{StringValue: s},
+					}
+				}
+				qdrantPayload[k] = &pb.Value{
+					Kind: &pb.Value_ListValue{ListValue: &pb.ListValue{Values: listValues}},
+				}
 			}
 		}
 	}

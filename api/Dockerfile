@@ -21,7 +21,7 @@ FROM alpine:latest
 
 WORKDIR /app
 
-RUN apk --no-cache add ca-certificates tzdata
+RUN apk --no-cache add ca-certificates tzdata ffmpeg
 
 # Копируем бинарник из билдера
 COPY --from=builder /app/kudytudy-api .

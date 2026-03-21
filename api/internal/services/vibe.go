@@ -149,6 +149,7 @@ func (s *VibeService) ProcessVoice(ctx context.Context, userID uuid.UUID, audioR
 		"gastro_vs_nature":     axes.GastroVsNature,
 		"culture_vs_adventure": axes.CultureVsAdventure,
 		"vibe_summary":         axes.VibeSummary,
+		"tags":                 axes.ExtractedTags,
 	}
 
 	if err := s.vibeRepo.UpsertVibeVector(ctx, database.CollectionUserVibes, userID, vector, payload); err != nil {
@@ -245,6 +246,9 @@ func (s *VibeService) Swipe(ctx context.Context, userID uuid.UUID, sceneID strin
 	// Получение вектора пользователя из Qdrant.
 	userVector, err := s.vibeRepo.GetVibeVector(ctx, database.CollectionUserVibes, userID)
 	if err != nil {
+		if errors.Is(err, database.ErrVectorNotFound) {
+			return database.ErrVectorNotFound
+		}
 		return fmt.Errorf("ошибка получения вектора пользователя: %w", err)
 	}
 
