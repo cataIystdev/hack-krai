@@ -51,8 +51,10 @@ func (c *Client) IsMock() bool {
 }
 
 // buildURL строит полный URL для API-эндпоинта.
+// OnlySq base URL (https://api.onlysq.ru/ai/openai/) уже включает
+// эквивалент OpenAI /v1/, поэтому добавляем только endpoint.
 func (c *Client) buildURL(endpoint string) string {
-	return c.baseURL + "/v1/" + endpoint
+	return c.baseURL + "/" + endpoint
 }
 
 // setAuthHeaders устанавливает заголовки авторизации для HTTP-запроса.
