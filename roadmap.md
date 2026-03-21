@@ -728,46 +728,118 @@ scenes -> swipe -> finalize -> recommendations.
 
 ### Current status
 
-Частично реализовано.
+✅ **DONE** (21.03.2026)
 
 ### Already implemented
 
 1. `POST /api/v1/trips`
 2. `GET /api/v1/trips/{id}`
-3. Trip validation/model/repository foundation
+3. `GET /api/v1/trips` — список поездок пользователя
+4. `PUT /api/v1/trips/{id}` — частичное обновление поездки (partial update)
+5. Trip validation/model/repository foundation
+6. Invite-токен: `POST /api/v1/trips/{id}/invite`
+7. Присоединение: `POST /api/v1/trips/{id}/join` (с атомарной проверкой group_size)
+8. Список участников: `GET /api/v1/trips/{id}/members`
 
-### Gap to complete
+### Gap analysis (что было выявлено)
 
-1. Ensure request/response fully match the desired frontend form.
-2. Expand payload only where it helps downstream route/group flows.
+При сравнении кода с GDD (строки 217-256) выявлены следующие проблемы:
 
-### Next handoff
+| Элемент                               | Статус до Phase 6 | Проблема                                                                                       |
+| ------------------------------------- | :---------------: | ---------------------------------------------------------------------------------------------- |
+| `format` (day_trip/weekend/multi_day) |        ❌         | Отсутствовал в DB, модели, DTO, OpenAPI                                                        |
+| `vibe_vector_id` (ссылка на Qdrant)   |        ❌         | Отсутствовал в модели Trip и CreateTripRequest (был только `merged_vibe_vector_id` для группы) |
+| `PUT /api/v1/trips/{id}`              |        ❌         | Не было endpoint'а для обновления (фронт не мог редактировать поездку)                         |
+| `TripWithMembers` (OpenAPI)           |        ❌         | Схема не была определена в OpenAPI, хотя использовалась в ответах                              |
+| `UpdateTripRequest` DTO               |        ❌         | Не существовал                                                                                 |
+| Дублирование Scan в репозитории       |        ⚠️         | 4 метода (FindByID, FindByInviteToken, FindByUserID, Create) дублировали одинаковый Scan       |
 
-Frontend can build the real trip form against mostly real APIs instead of mocking it from zero.
+### Что сделано
 
-### Deliverables
+#### Миграция БД
 
-1. Нормализованный `POST /api/v1/trips`
-2. `GET /api/v1/trips/{id}`
-3. Поля:
-   - dates
-   - budget
-   - transport
-   - group_size
-   - group_composition
-   - format
-   - optional `vibe_vector_id`
+- `api/migrations/007_add_trip_format_and_vibe_vector.sql`
+  - `format TEXT NOT NULL DEFAULT 'multi_day'` + CHECK constraint
+  - `vibe_vector_id UUID` (nullable)
+  - Миграция идемпотентна (`IF NOT EXISTS`), применяется автоматически при старте API через `runMigrations()`
 
-4. Validation и error handling.
+#### Модели (`api/internal/models/trip.go`)
+
+- Добавлены поля `Format string` и `VibeVectorID *uuid.UUID` в struct `Trip`
+- Добавлены поля `Format string` и `VibeVectorID string` в `CreateTripRequest`
+- Добавлена карта `ValidFormats` (day_trip, weekend, multi_day)
+- Обновлена `Validate()` — валидация `format` по карте, `vibe_vector_id` как UUID
+- Обновлена `NormalizeDefaults()` — дефолт `format = "multi_day"`
+- Создан `UpdateTripRequest` — DTO для partial update, все поля указатели (nil = не обновлять), своя `Validate()` проверяет только переданные поля
+
+#### Репозиторий (`api/internal/database/trip_repository.go`)
+
+- Вынесен `scanTrip()` helper — единая функция разбора строки в `models.Trip`, устраняет дублирование в 4 методах
+- Вынесена `tripColumns` const — список столбцов для SELECT
+- Обновлены все SQL-запросы: `Create`, `FindByID`, `FindByInviteToken`, `FindByUserID` — добавлены `format`, `vibe_vector_id`
+- Создан метод `Update()` — динамический SQL (`SET col = $N`) только для переданных полей, с RETURNING
+
+#### Сервис (`api/internal/services/trip.go`)
+
+- `Create()` — передаёт `Format` и `VibeVectorID` из DTO в модель, парсинг UUID из строки
+- Создан `Update()` — загрузка поездки, проверка `CreatorID == userID`, формирование map изменённых полей, вызов `repo.Update()`, загрузка участников
+
+#### Handler + Router
+
+- `api/internal/handlers/trip.go` — создан `Update()` handler (парсинг JWT, path ID, bind body, validate, service call)
+- `api/internal/handlers/router.go` — зарегистрирован `tripsProtected.Put("/:id", tripHandler.Update)`
+
+#### OpenAPI (`api/internal/handlers/openapi.go`)
+
+- Trip schema: добавлены `format` (enum) и `vibe_vector_id` (uuid, nullable)
+- CreateTripRequest schema: добавлены `format` и `vibe_vector_id`
+- Добавлена `UpdateTripRequest` schema — все поля опциональны
+- Добавлена `TripWithMembers` schema (allOf: Trip + members array)
+- Добавлен `PUT /api/v1/trips/{id}` endpoint с описанием ответов
+
+#### Тесты (`api/internal/models/trip_test.go`)
+
+- Расширены тесты `CreateTripRequest` — добавлены кейсы format (корректный/некорректный, day_trip, weekend), vibe_vector_id (UUID/не-UUID)
+- Добавлен `TestCreateTripRequestNormalizeDefaults_NoOverwrite` — проверка что NormalizeDefaults не перезаписывает явно установленные значения
+- Создан полный `TestUpdateTripRequestValidation` — 15 кейсов: пустой запрос, пустые даты, некорректные форматы, порядок дат, отрицательные значения, некорректные enum'ы, корректные partial updates, очистка vibe_vector_id
+- Создан `TestValidFormats` — проверка карты допустимых форматов
+
+#### Документация
+
+- `docs/phase6/trip_details_mvp.md` — хендовер-документация для фронтенда
+
+### Баги и проблемы
+
+Критических багов не выявлено. Основные проблемы были архитектурного характера:
+
+1. **Дублирование Scan** — 4 метода репозитория содержали идентичный Scan 12+ полей. Решено: вынесен `scanTrip()` helper.
+2. **Порядок полей в Trip struct** — при добавлении `format` между `group_composition` и `invite_token`, а `vibe_vector_id` после `invite_token`, необходимо было синхронно обновить порядок в `tripColumns`, `scanTrip()` и всех INSERT/RETURNING. Решено полной перезаписью файла репозитория.
+
+### Результаты тестирования
+
+- `go build ./...` — ✅ компиляция без ошибок
+- `go test ./internal/models/ -v` — ✅ 39 тестов, все PASS
+  - 15 TestCreateTripRequestValidation
+  - 1 TestCreateTripRequestParseDates
+  - 2 TestCreateTripRequestNormalizeDefaults (включая NoOverwrite)
+  - 5 TestJoinTripRequestValidation
+  - 15 TestUpdateTripRequestValidation
+  - 6 TestConstants (Status, Role, BudgetTiers, Transports, Formats)
 
 ### Acceptance criteria
 
-1. Trip object можно использовать дальше в route planning.
-2. Frontend может честно сохранять форму, а не держать ее локально.
+1. ✅ Trip object содержит все поля из GDD: dates, budget, transport, group_size, group_composition, format, vibe_vector_id
+2. ✅ Frontend может честно сохранять форму через `POST /api/v1/trips` и редактировать через `PUT /api/v1/trips/{id}`
+3. ✅ Trip можно использовать в route planning (все необходимые поля присутствуют)
 
 ### Frontend handoff
 
-После этой фазы фронт собирает production-like Trip Details screen.
+После этой фазы фронт собирает production-like Trip Details screen. API полностью готово:
+
+- Создание поездки с полными данными формы
+- Редактирование через partial update (только изменённые поля)
+- Все поля возвращаются в GET-ответах
+- OpenAPI документация актуальна в Scalar UI
 
 ---
 
