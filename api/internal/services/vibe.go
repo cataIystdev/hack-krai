@@ -90,19 +90,16 @@ func NewVibeService(
 //
 // В mock-режиме применяется controlled latency для естественной UX-анимации.
 // Возвращает screenshot-ready VoiceProfileResponse с вложенными axes.
-func (s *VibeService) ProcessVoice(ctx context.Context, userID uuid.UUID, audioReader io.Reader, filename string, fileSize int64) (*models.VoiceProfileResponse, error) {
+func (s *VibeService) ProcessVoice(ctx context.Context, userID uuid.UUID, audioData []byte, filename string, fileSize int64) (*models.VoiceProfileResponse, error) {
 	start := time.Now()
 
 	s.logger.Info("начало голосового профилирования",
 		zap.String("user_id", userID.String()),
 		zap.String("filename", filename),
+		zap.Int("audio_bytes", len(audioData)),
 	)
 
-	// Буферизация аудиоданных для переиспользования (MinIO + STT).
-	audioData, err := io.ReadAll(audioReader)
-	if err != nil {
-		return nil, fmt.Errorf("ошибка чтения аудиоданных: %w", err)
-	}
+	// Данные уже прочитаны handler'ом — переиспользуем bytes.NewReader.
 	actualSize := int64(len(audioData))
 
 	// Шаг 1: Сохранение аудио в MinIO.

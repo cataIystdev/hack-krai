@@ -7,6 +7,8 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
+	"io"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/google/uuid"
@@ -62,7 +64,9 @@ func (h *VibeHandler) VoiceProfile(c fiber.Ctx) error {
 		})
 	}
 
-	// Открытие файла для чтения.
+	// КРИТИЧНО: Читаем ВСЕ данные файла сразу в handler.
+	// fasthttp переиспользует буферы — io.Reader может стать невалидным
+	// после возврата из handler или при длительной обработке.
 	file, err := fileHeader.Open()
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -70,15 +74,46 @@ func (h *VibeHandler) VoiceProfile(c fiber.Ctx) error {
 			"message": "ошибка открытия аудиофайла",
 		})
 	}
-	defer file.Close()
+	audioData, err := io.ReadAll(file)
+	file.Close()
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"success": false,
+			"message": "ошибка чтения аудиофайла",
+		})
+	}
+
+	// Логирование размера и первых байт для диагностики.
+	hexPreview := ""
+	if len(audioData) >= 16 {
+		hexPreview = fmt.Sprintf("%x", audioData[:16])
+	} else if len(audioData) > 0 {
+		hexPreview = fmt.Sprintf("%x", audioData)
+	}
+	h.logger.Info("аудиофайл получен",
+		zap.String("user_id", userIDStr),
+		zap.Int("actual_bytes", len(audioData)),
+		zap.Int64("header_size", fileHeader.Size),
+		zap.String("filename", fileHeader.Filename),
+		zap.String("hex_preview", hexPreview),
+	)
+
+	// Валидация: минимум 1KB данных (webm header ~100-200 байт, нужны аудиоданные).
+	const minAudioSize = 1024
+	if len(audioData) < minAudioSize {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"success": false,
+			"message": fmt.Sprintf("аудиозапись слишком короткая (%d байт). Удерживайте кнопку микрофона минимум 2-3 секунды.", len(audioData)),
+		})
+	}
 
 	// Выполнение пайплайна профилирования.
 	result, err := h.vibeService.ProcessVoice(
 		c.Context(),
 		userID,
-		file,
+		audioData,
 		fileHeader.Filename,
-		fileHeader.Size,
+		int64(len(audioData)),
 	)
 	if err != nil {
 		h.logger.Error("ошибка голосового профилирования",
