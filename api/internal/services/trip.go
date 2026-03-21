@@ -191,7 +191,7 @@ func (s *TripService) GenerateInviteToken(ctx context.Context, tripID uuid.UUID,
 
 // Join присоединяет участника к поездке по invite-токену.
 // Доступно без авторизации: неавторизованные участники имеют user_id = nil.
-// Проверяет валидность токена, ограничение group_size и дубликаты.
+// Проверяет валидность токена и атомарно вставляет участника с проверкой group_size.
 func (s *TripService) Join(ctx context.Context, tripID uuid.UUID, req *models.JoinTripRequest, userID *uuid.UUID) (*models.TripMember, error) {
 	// Парсинг invite-токена.
 	inviteToken, err := uuid.Parse(req.InviteToken)
@@ -213,16 +213,6 @@ func (s *TripService) Join(ctx context.Context, tripID uuid.UUID, req *models.Jo
 		return nil, ErrInvalidInviteToken
 	}
 
-	// Проверка ограничения по количеству участников.
-	currentCount, err := s.tripRepo.CountMembers(ctx, tripID)
-	if err != nil {
-		return nil, err
-	}
-
-	if currentCount >= trip.GroupSize {
-		return nil, ErrTripFull
-	}
-
 	// Подготовка тегов.
 	tags := req.Tags
 	if tags == nil {
@@ -239,10 +229,15 @@ func (s *TripService) Join(ctx context.Context, tripID uuid.UUID, req *models.Jo
 		IsChild:     req.IsChild,
 	}
 
-	created, err := s.tripRepo.AddMember(ctx, member)
+	// Атомарная вставка с проверкой лимита group_size.
+	// INSERT выполняется только если count < group_size (один SQL-запрос).
+	created, err := s.tripRepo.AddMemberAtomic(ctx, member, trip.GroupSize)
 	if err != nil {
 		if errors.Is(err, database.ErrMemberAlreadyExists) {
 			return nil, ErrAlreadyMember
+		}
+		if errors.Is(err, database.ErrTripFull) {
+			return nil, ErrTripFull
 		}
 		return nil, err
 	}

@@ -41,12 +41,22 @@ func NewHealthHandler(dbManager *database.Manager, logger *zap.Logger) *HealthHa
 	}
 }
 
-// Check обрабатывает GET /api/v1/health.
-// Выполняет асинхронный пинг всех 6 баз данных через менеджер подключений.
+// Live обрабатывает GET /api/v1/health/live.
+// Мгновенный ответ без пинга внешних сервисов.
+// Используется как Kubernetes liveness probe — проверяет только что процесс жив.
+func (h *HealthHandler) Live(c fiber.Ctx) error {
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"status":    "alive",
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+	})
+}
+
+// Ready обрабатывает GET /api/v1/health/ready.
+// Выполняет асинхронный пинг всех баз данных через менеджер подключений.
 // Возвращает JSON с общим статусом и деталями по каждому сервису.
 // Статус-код 200 — все сервисы доступны, 503 — есть недоступные сервисы.
-func (h *HealthHandler) Check(c fiber.Ctx) error {
-	h.logger.Debug("выполнение проверки здоровья сервисов")
+func (h *HealthHandler) Ready(c fiber.Ctx) error {
+	h.logger.Debug("выполнение проверки готовности сервисов")
 
 	// Асинхронный пинг всех БД через менеджер подключений.
 	services := h.dbManager.PingAll(c.Context())
@@ -76,10 +86,16 @@ func (h *HealthHandler) Check(c fiber.Ctx) error {
 		statusCode = fiber.StatusServiceUnavailable
 	}
 
-	h.logger.Debug("проверка здоровья завершена",
+	h.logger.Debug("проверка готовности завершена",
 		zap.String("status", overallStatus),
 		zap.Int("services_count", len(services)),
 	)
 
 	return c.Status(statusCode).JSON(response)
+}
+
+// Check обрабатывает GET /api/v1/health (обратная совместимость).
+// Делегирует в Ready() — полный пинг всех БД.
+func (h *HealthHandler) Check(c fiber.Ctx) error {
+	return h.Ready(c)
 }

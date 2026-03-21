@@ -1,5 +1,6 @@
 // Тесты для обработчика загрузки медиафайлов.
-// Проверяют валидацию размера, MIME-типа и обработку отсутствующего файла.
+// Проверяют валидацию размера, MIME-типа, обработку отсутствующего файла
+// и безопасное поведение при недоступности хранилища.
 package handlers
 
 import (
@@ -16,26 +17,33 @@ import (
 	"go.uber.org/zap"
 )
 
-// TestMediaUploadNoFile проверяет ответ при отсутствии файла в запросе.
-func TestMediaUploadNoFile(t *testing.T) {
+// TestMediaUploadStorageUnavailable проверяет, что при nil storage
+// Upload возвращает 503 Service Unavailable вместо panic.
+func TestMediaUploadStorageUnavailable(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
 
-	// Создание handler без реального StorageService (nil),
-	// так как валидация файла происходит до обращения к хранилищу.
+	// storage = nil имитирует недоступность MinIO.
 	handler := NewMediaHandler(nil, logger)
 
 	app := fiber.New()
 	app.Post("/api/v1/media/upload", handler.Upload)
 
-	// Запрос без multipart body.
-	req, _ := http.NewRequest(http.MethodPost, "/api/v1/media/upload", nil)
-	req.Header.Set("Content-Type", "multipart/form-data; boundary=test")
+	// Создание multipart-запроса с файлом.
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	part, _ := writer.CreateFormFile("file", "test.jpg")
+	_, _ = part.Write([]byte("fake-image-data-more-than-zero"))
+	writer.Close()
+
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/media/upload", &buf)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
 
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
-	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	// При nil storage ожидаем 503, а не panic.
+	assert.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
 
 	body, _ := io.ReadAll(resp.Body)
 	var response UploadResponse
@@ -43,11 +51,40 @@ func TestMediaUploadNoFile(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.False(t, response.Success)
-	assert.Contains(t, response.Message, "файл не найден")
+	assert.Contains(t, response.Message, "временно недоступно")
 }
 
-// TestMediaUploadResponseStructure проверяет, что ответ на запрос
-// без файла содержит корректную структуру JSON.
+// TestMediaUploadNoFile проверяет ответ при отсутствии файла в запросе.
+func TestMediaUploadNoFile(t *testing.T) {
+	logger, _ := zap.NewDevelopment()
+
+	// storage = nil, но запрос не содержит файла.
+	// nil-guard сработает первым и вернёт 503.
+	handler := NewMediaHandler(nil, logger)
+
+	app := fiber.New()
+	app.Post("/api/v1/media/upload", handler.Upload)
+
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/media/upload", nil)
+	req.Header.Set("Content-Type", "multipart/form-data; boundary=test")
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	// При nil storage — 503.
+	assert.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+
+	body, _ := io.ReadAll(resp.Body)
+	var response UploadResponse
+	err = json.Unmarshal(body, &response)
+	require.NoError(t, err)
+
+	assert.False(t, response.Success)
+}
+
+// TestMediaUploadResponseStructure проверяет, что ответ при nil storage
+// содержит корректную структуру JSON с полями success и message.
 func TestMediaUploadResponseStructure(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
 	handler := NewMediaHandler(nil, logger)
@@ -55,7 +92,7 @@ func TestMediaUploadResponseStructure(t *testing.T) {
 	app := fiber.New()
 	app.Post("/api/v1/media/upload", handler.Upload)
 
-	// Создание multipart-запроса с пустым файлом (без поля "file").
+	// Создание multipart-запроса без файла.
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
 	_ = writer.WriteField("name", "test")
@@ -68,7 +105,8 @@ func TestMediaUploadResponseStructure(t *testing.T) {
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
-	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	// При nil storage — 503 до проверки наличия файла.
+	assert.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
 
 	body, _ := io.ReadAll(resp.Body)
 	var response map[string]interface{}

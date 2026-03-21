@@ -21,6 +21,10 @@ const (
 	// CollectionUserVibes — коллекция vibe-профилей пользователей.
 	CollectionUserVibes = "user_vibes"
 
+	// CollectionSceneVibes — коллекция эмбеддингов swipe-сцен.
+	// Изолирована от user_vibes для предотвращения смешения доменных моделей.
+	CollectionSceneVibes = "scene_vibes"
+
 	// CollectionLocationVibes — коллекция vibe-профилей локаций.
 	CollectionLocationVibes = "location_vibes"
 )

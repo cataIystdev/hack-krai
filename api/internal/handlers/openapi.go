@@ -187,6 +187,60 @@ func OpenAPISpec(baseURL string) map[string]any {
 					},
 				},
 			},
+			"/api/v1/health/live": map[string]any{
+				"get": map[string]any{
+					"tags":        []string{"Мониторинг"},
+					"summary":     "Liveness probe",
+					"description": "Мгновенный ответ без пинга внешних сервисов. Проверяет только что процесс API жив.\n\nИспользуется как Kubernetes liveness probe. Не создаёт нагрузку на внешние сервисы.",
+					"operationId": "healthLive",
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Процесс жив и обрабатывает запросы.",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{
+										"type": "object",
+										"properties": map[string]any{
+											"status":    map[string]any{"type": "string", "example": "alive"},
+											"timestamp": map[string]any{"type": "string", "format": "date-time"},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			"/api/v1/health/ready": map[string]any{
+				"get": map[string]any{
+					"tags":        []string{"Мониторинг"},
+					"summary":     "Readiness probe -- полная проверка всех БД",
+					"description": "Выполняет асинхронный пинг всех 6 баз данных. Аналогичен GET /api/v1/health.\n\nИспользуется как Kubernetes readiness probe.",
+					"operationId": "healthReady",
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Все сервисы доступны.",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{
+										"$ref": "#/components/schemas/HealthResponse",
+									},
+								},
+							},
+						},
+						"503": map[string]any{
+							"description": "Один или несколько сервисов недоступны.",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{
+										"$ref": "#/components/schemas/HealthResponse",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
 			"/api/v1/media/upload": map[string]any{
 				"post": map[string]any{
 					"tags":        []string{"Медиа"},

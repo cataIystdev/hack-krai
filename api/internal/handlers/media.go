@@ -71,6 +71,16 @@ func NewMediaHandler(storage *services.StorageService, logger *zap.Logger) *Medi
 //   - 400: файл не найден, превышен размер или неподдерживаемый тип.
 //   - 500: ошибка при загрузке в хранилище.
 func (h *MediaHandler) Upload(c fiber.Ctx) error {
+	// Проверка доступности хранилища.
+	// При недоступности MinIO возвращаем 503 вместо panic на nil pointer.
+	if h.storage == nil {
+		h.logger.Error("хранилище медиафайлов недоступно: StorageService не инициализирован")
+		return c.Status(fiber.StatusServiceUnavailable).JSON(UploadResponse{
+			Success: false,
+			Message: "хранилище медиафайлов временно недоступно",
+		})
+	}
+
 	h.logger.Debug("получен запрос на загрузку файла")
 
 	// Извлечение файла из multipart-формы.

@@ -67,6 +67,8 @@ func (h *VibeHandler) VoiceProfile(c fiber.Ctx) error {
 	// КРИТИЧНО: Читаем ВСЕ данные файла сразу в handler.
 	// fasthttp переиспользует буферы — io.Reader может стать невалидным
 	// после возврата из handler или при длительной обработке.
+	// Ограничиваем размер аудио для защиты от memory pressure.
+	const maxAudioSize = 25 * 1024 * 1024 // 25 МБ
 	file, err := fileHeader.Open()
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -74,12 +76,20 @@ func (h *VibeHandler) VoiceProfile(c fiber.Ctx) error {
 			"message": "ошибка открытия аудиофайла",
 		})
 	}
-	audioData, err := io.ReadAll(file)
+	audioData, err := io.ReadAll(io.LimitReader(file, maxAudioSize+1))
 	file.Close()
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"success": false,
 			"message": "ошибка чтения аудиофайла",
+		})
+	}
+
+	// Проверка превышения максимального размера аудиофайла.
+	if len(audioData) > maxAudioSize {
+		return c.Status(fiber.StatusRequestEntityTooLarge).JSON(fiber.Map{
+			"success": false,
+			"message": fmt.Sprintf("аудиофайл слишком большой (%d байт). Максимальный размер: %d байт (25 МБ).", len(audioData), maxAudioSize),
 		})
 	}
 

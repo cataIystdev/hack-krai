@@ -22,6 +22,9 @@ var (
 
 	// ErrMemberAlreadyExists — пользователь уже является участником поездки.
 	ErrMemberAlreadyExists = errors.New("пользователь уже является участником поездки")
+
+	// ErrTripFull — достигнут лимит участников поездки (group_size).
+	ErrTripFull = errors.New("достигнут лимит участников поездки")
 )
 
 // TripRepository — репозиторий для работы с таблицами trips и trip_members.
@@ -332,4 +335,64 @@ func (r *TripRepository) CountMembers(ctx context.Context, tripID uuid.UUID) (in
 	}
 
 	return count, nil
+}
+
+// AddMemberAtomic атомарно добавляет участника в поездку с проверкой лимита group_size.
+// Использует INSERT ... SELECT WHERE (SELECT count(*) ...) < maxGroupSize,
+// что гарантирует атомарность проверки и вставки на уровне одного SQL-запроса.
+// Возвращает ErrTripFull если лимит уже достигнут (0 rows affected).
+// Возвращает ErrMemberAlreadyExists при нарушении UNIQUE constraint (trip_id + user_id).
+func (r *TripRepository) AddMemberAtomic(ctx context.Context, member *models.TripMember, maxGroupSize int) (*models.TripMember, error) {
+	query := `
+		INSERT INTO trip_members (trip_id, user_id, display_name, role, vibe_vector_id, tags, is_child)
+		SELECT $1, $2, $3, $4, $5, $6, $7
+		WHERE (SELECT COUNT(*) FROM trip_members WHERE trip_id = $1) < $8
+		RETURNING id, trip_id, user_id, display_name, role, vibe_vector_id, tags, is_child, joined_at
+	`
+
+	var result models.TripMember
+	err := r.pg.Pool.QueryRow(ctx, query,
+		member.TripID,
+		member.UserID,
+		member.DisplayName,
+		member.Role,
+		member.VibeVectorID,
+		member.Tags,
+		member.IsChild,
+		maxGroupSize,
+	).Scan(
+		&result.ID,
+		&result.TripID,
+		&result.UserID,
+		&result.DisplayName,
+		&result.Role,
+		&result.VibeVectorID,
+		&result.Tags,
+		&result.IsChild,
+		&result.JoinedAt,
+	)
+	if err != nil {
+		// Проверка нарушения UNIQUE constraint (повторное присоединение).
+		if contains(err.Error(), "duplicate key") || contains(err.Error(), "idx_trip_members_unique_user") {
+			return nil, ErrMemberAlreadyExists
+		}
+		// Проверка отсутствия вставленной строки (лимит достигнут).
+		if err.Error() == "no rows in result set" {
+			return nil, ErrTripFull
+		}
+		r.logger.Error("ошибка атомарного добавления участника",
+			zap.String("trip_id", member.TripID.String()),
+			zap.String("display_name", member.DisplayName),
+			zap.Int("max_group_size", maxGroupSize),
+			zap.Error(err),
+		)
+		return nil, fmt.Errorf("ошибка атомарного добавления участника: %w", err)
+	}
+
+	r.logger.Info("участник атомарно добавлен в поездку",
+		zap.String("trip_id", result.TripID.String()),
+		zap.String("member_id", result.ID.String()),
+		zap.String("display_name", result.DisplayName),
+	)
+	return &result, nil
 }

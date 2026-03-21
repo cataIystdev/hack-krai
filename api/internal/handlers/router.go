@@ -47,7 +47,9 @@ func SetupRoutes(
 
 	// Обработчик проверки здоровья сервисов.
 	healthHandler := NewHealthHandler(dbManager, logger)
-	v1.Get("/health", healthHandler.Check)
+	v1.Get("/health", healthHandler.Check)       // обратная совместимость (полный пинг)
+	v1.Get("/health/live", healthHandler.Live)   // liveness probe (мгновенный ответ)
+	v1.Get("/health/ready", healthHandler.Ready) // readiness probe (пинг всех БД)
 
 	// Обработчик загрузки медиафайлов.
 	mediaHandler := NewMediaHandler(storage, logger)

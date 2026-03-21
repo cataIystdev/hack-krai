@@ -197,7 +197,7 @@ Backend планируется так, чтобы:
 Backend roadmap покрывает полный demo-first контур:
 
 - Фазы 0-5 завершены.
-- Фаза 5.5 (техническое усиление) -- следующий приоритет.
+- Фаза 5.5 (техническое усиление) -- ЗАВЕРШЕНА.
 - Demo-first flow полностью функционален: voice -> vibe -> swipe -> finalize -> map -> location detail.
 - Основные оставшиеся gap-ы: weather, live routing, storytelling, booking, B2G.
 
@@ -629,6 +629,8 @@ scenes -> swipe -> finalize -> recommendations.
 
 ## Фаза 5.5. Техническое усиление после демо
 
+> СТАТУС: ЗАВЕРШЕНА (2026-03-21)
+
 ### Цель
 
 Сразу после сборки и съемки demo-first контура закрыть тяжелые технические замечания, которые могут вызвать вопросы на code review или помешать нормальному росту в MVP.
@@ -646,6 +648,7 @@ scenes -> swipe -> finalize -> recommendations.
      - недоступность MinIO превращается в runtime crash-path вместо контролируемой деградации;
      - внешняя инфраструктурная проблема начинает ломать само приложение;
      - на review это выглядит как отсутствие defensive handling для опциональной зависимости.
+   - **Исправлено:** Nil-guard в начале `Upload()` — возвращает 503 Service Unavailable с сообщением "хранилище медиафайлов временно недоступно".
 
 2. Trip join race / overbooking risk:
    - `CountMembers()` и `AddMember()` выполняются раздельно;
@@ -654,6 +657,7 @@ scenes -> swipe -> finalize -> recommendations.
      - бизнес-инварианта "в поездке не больше N участников" не гарантируется атомарно;
      - под нагрузкой система может вести себя неконсистентно;
      - на review это классический признак отсутствия транзакционной защиты важного ограничения.
+   - **Исправлено:** Метод `AddMemberAtomic()` — INSERT ... SELECT WHERE (SELECT count(\*) ...) < maxGroupSize. Один SQL-запрос вместо двух.
 
 3. Swipe logic mismatch:
    - scene vectors читаются из `user_vibes`;
@@ -662,6 +666,7 @@ scenes -> swipe -> finalize -> recommendations.
      - доменная модель "сцена" смешивается с доменной моделью "пользователь";
      - текущий flow может работать только за счет специальных seed-данных или случайно;
      - на review это выглядит как несоответствие реализации продуктовой логике GDD.
+   - **Исправлено:** Новая коллекция `scene_vibes` в Qdrant. `SeedSceneVectors()` пишет в `scene_vibes`, `Swipe()` читает сцену из `scene_vibes`, пользователя из `user_vibes`.
 
 4. Voice profiling memory pressure:
    - аудио читается в память;
@@ -671,6 +676,7 @@ scenes -> swipe -> finalize -> recommendations.
      - самая тяжелая фича сервиса дополнительно расходует RAM и CPU сверх необходимости;
      - при нескольких одновременных запросах можно быстро упереться в ресурсы;
      - на review это не "микрооптимизация", а реальный operational risk.
+   - **Исправлено:** `io.LimitReader(file, 25MB+1)` — ограничение аудио 25 МБ. При превышении — 413 Payload Too Large.
 
 5. Health endpoint cost:
    - каждый запрос к health синхронно пингует все внешние сервисы;
@@ -679,20 +685,31 @@ scenes -> swipe -> finalize -> recommendations.
      - мониторинг сам начинает создавать заметную нагрузку;
      - доступность API становится слишком сильно связана с состоянием всех интеграций сразу;
      - на review это обычно просят разделять на cheap liveness и более дорогой readiness/diagnostics.
+   - **Исправлено:** Разделение на `GET /health/live` (мгновенный, liveness) и `GET /health/ready` (полный пинг, readiness). `GET /health` оставлен как alias.
 
-### Результаты фазы
+### Реализация
 
-1. Safe media upload behavior when MinIO unavailable
-2. Atomic trip join strategy
-3. Correct source of swipe vectors
-4. Reduced memory footprint in voice pipeline
-5. Cheaper health/readiness split if needed
+| Исправление  | Подход                   | Файлы                                                                               |
+| ------------ | ------------------------ | ----------------------------------------------------------------------------------- |
+| Media panic  | Nil-guard → 503          | `handlers/media.go`, `handlers/media_test.go`                                       |
+| Trip race    | `INSERT WHERE count < N` | `database/trip_repository.go`, `services/trip.go`                                   |
+| Swipe source | Коллекция `scene_vibes`  | `database/vibe_repository.go`, `database/qdrant_collections.go`, `services/vibe.go` |
+| Voice memory | `io.LimitReader` 25 МБ   | `handlers/vibe.go`                                                                  |
+| Health cost  | Live/Ready split         | `handlers/health.go`, `handlers/router.go`, `handlers/openapi.go`                   |
 
-### Критерии готовности
+### Метрики
 
-1. No obvious panic-level traps remain in demo-touched code.
-2. Core endpoints stop relying on brittle demo assumptions.
-3. MVP work can continue on top of safer contracts and safer runtime behavior.
+- Build: PASS, 0 ошибок компиляции
+- Тесты: 7/7 пакетов PASS
+- Новые тесты: `TestMediaUploadStorageUnavailable`
+- Документация: `docs/phase5.5/technical_hardening.md`
+- OpenAPI: обновлён (`/health/live`, `/health/ready`)
+
+### Критерии готовности -- выполнены
+
+1. No obvious panic-level traps remain in demo-touched code -- media nil-guard закрывает единственный panic-path.
+2. Core endpoints stop relying on brittle demo assumptions -- scene vectors изолированы, trip join атомарен.
+3. MVP work can continue on top of safer contracts and safer runtime behavior -- все 5 исправлений применены.
 
 ---
 

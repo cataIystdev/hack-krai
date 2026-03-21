@@ -35,6 +35,11 @@ var DefaultCollections = []QdrantCollectionConfig{
 		VectorSize: 384,
 		Distance:   pb.Distance_Cosine,
 	},
+	{
+		Name:       "scene_vibes",
+		VectorSize: 384,
+		Distance:   pb.Distance_Cosine,
+	},
 }
 
 // EnsureCollections проверяет наличие и при необходимости создаёт коллекции Qdrant.

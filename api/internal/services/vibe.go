@@ -261,7 +261,7 @@ func (s *VibeService) Swipe(ctx context.Context, userID uuid.UUID, sceneID strin
 		return fmt.Errorf("некорректный UUID сцены: %w", err)
 	}
 
-	sceneVector, err := s.vibeRepo.GetVibeVector(ctx, database.CollectionUserVibes, sceneUUID)
+	sceneVector, err := s.vibeRepo.GetVibeVector(ctx, database.CollectionSceneVibes, sceneUUID)
 	if err != nil {
 		// Если вектора сцены нет в Qdrant — пропускаем свайп.
 		s.logger.Warn("вектор сцены не найден в Qdrant, свайп пропущен",
@@ -685,7 +685,7 @@ func (s *VibeService) SeedSceneVectors(ctx context.Context) {
 			"title": scene.Title,
 		}
 
-		if err := s.vibeRepo.UpsertVibeVector(ctx, database.CollectionUserVibes, scene.ID, vector, payload); err != nil {
+		if err := s.vibeRepo.UpsertVibeVector(ctx, database.CollectionSceneVibes, scene.ID, vector, payload); err != nil {
 			s.logger.Error("SeedSceneVectors: ошибка upsert в Qdrant",
 				zap.String("scene_id", scene.ID.String()),
 				zap.Error(err),
