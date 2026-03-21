@@ -75,30 +75,38 @@ func (v *VoskClient) Transcribe(ctx context.Context, audioReader io.Reader, file
 	)
 
 	// Шаг 2: Подключение к Vosk-server по WebSocket с retry.
-	// Vosk загружает русскую модель ~60 секунд, connection refused возможен при рестарте.
+	// Vosk загружает русскую модель ~60 секунд (6.5 GB RAM).
+	// Backoff: 5+5+10+10+15+15 = 60 секунд суммарного ожидания.
 	var conn *websocket.Conn
-	const maxRetries = 3
-	for attempt := 0; attempt <= maxRetries; attempt++ {
+	retryDelays := []time.Duration{
+		5 * time.Second,
+		5 * time.Second,
+		10 * time.Second,
+		10 * time.Second,
+		15 * time.Second,
+		15 * time.Second,
+	}
+	for attempt := 0; attempt <= len(retryDelays); attempt++ {
 		conn, _, err = websocket.DefaultDialer.DialContext(ctx, v.wsURL, nil)
 		if err == nil {
 			break
 		}
 
-		if attempt == maxRetries {
-			return "", fmt.Errorf("ошибка подключения к Vosk-server после %d попыток (%s): %w", maxRetries+1, v.wsURL, err)
+		if attempt == len(retryDelays) {
+			return "", fmt.Errorf("Vosk-server недоступен после %d попыток (%s). Попробуйте через минуту: %w", attempt+1, v.wsURL, err)
 		}
 
-		backoff := time.Duration(1<<uint(attempt+1)) * time.Second // 2s, 4s, 8s
 		v.logger.Warn("Vosk-server недоступен, повторная попытка",
 			zap.Int("attempt", attempt+1),
-			zap.Duration("backoff", backoff),
+			zap.Int("max_attempts", len(retryDelays)+1),
+			zap.Duration("backoff", retryDelays[attempt]),
 			zap.Error(err),
 		)
 
 		select {
 		case <-ctx.Done():
 			return "", fmt.Errorf("контекст отменён при подключении к Vosk: %w", ctx.Err())
-		case <-time.After(backoff):
+		case <-time.After(retryDelays[attempt]):
 		}
 	}
 	defer conn.Close()
