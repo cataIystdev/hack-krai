@@ -2034,6 +2034,7 @@ func OpenAPISpec(baseURL string) map[string]any {
 						"vibe_score":             map[string]any{"type": "number", "format": "float", "description": "Vibe-score (0.0-1.0)."},
 						"audio_story_url":        map[string]any{"type": "string", "description": "URL story asset для точки."},
 						"story_text":             map[string]any{"type": "string", "description": "Текст истории точки."},
+						"story_debug_info":       map[string]any{"type": "string", "description": "Отладочная информация TTS (провал генерации, ошибки загрузки и т.д.)."},
 						"weather_condition":      map[string]any{"type": "string", "description": "Погодное состояние для точки."},
 						"weather_temp_c":         map[string]any{"type": "integer", "description": "Температура в градусах Цельсия."},
 					},

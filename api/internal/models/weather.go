@@ -29,6 +29,7 @@ type RouteStory struct {
 	StoryText     string `json:"story_text"`
 	DurationSec   int    `json:"duration_sec"`
 	WeatherHint   string `json:"weather_hint,omitempty"`
+	DebugInfo     string `json:"debug_info,omitempty"`
 }
 
 // GenerateStoriesResponse — результат генерации историй.

@@ -307,4 +307,7 @@ type RoutePointDB struct {
 
 	// WeatherTempC — температура.
 	WeatherTempC *int `json:"weather_temp_c,omitempty" db:"weather_temp_c"`
+
+	// StoryDebugInfo — отладочная информация TTS.
+	StoryDebugInfo string `json:"story_debug_info" db:"story_debug_info"`
 }

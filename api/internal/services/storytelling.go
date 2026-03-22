@@ -60,6 +60,7 @@ func (s *StorytellingService) GenerateStories(ctx context.Context, routeID, user
 
 		storyText := s.buildStoryText(loc, point)
 		audioURL := ""
+		debugInfo := ""
 
 		if s.tts != nil && s.storage != nil {
 			// Реальный TTS: текст → mp3 через ElevenLabs
@@ -69,13 +70,16 @@ func (s *StorytellingService) GenerateStories(ctx context.Context, routeID, user
 					zap.String("point_id", point.ID.String()),
 					zap.Error(ttsErr),
 				)
+				debugInfo = fmt.Sprintf("ElevenLabs TTS failed: %v", ttsErr)
 			} else {
 				objectName := fmt.Sprintf("stories/%s/%s.mp3", routeID.String(), point.ID.String())
 				result, upErr := s.storage.Upload(ctx, objectName, bytes.NewReader(mp3), int64(len(mp3)), "audio/mpeg")
 				if upErr != nil {
 					s.logger.Warn("не удалось загрузить mp3 в MinIO", zap.Error(upErr))
+					debugInfo = fmt.Sprintf("ElevenLabs success, but MinIO MP3 upload failed: %v", upErr)
 				} else if result != nil {
 					audioURL = result.URL
+					debugInfo = "Success (MP3 from ElevenLabs)"
 					s.logger.Info("story mp3 uploaded",
 						zap.String("point_id", point.ID.String()),
 						zap.String("url", audioURL),
@@ -88,12 +92,16 @@ func (s *StorytellingService) GenerateStories(ctx context.Context, routeID, user
 			result, upErr := s.storage.Upload(ctx, objectName, bytes.NewReader([]byte(storyText)), int64(len(storyText)), "text/plain")
 			if upErr != nil {
 				s.logger.Warn("не удалось загрузить story text", zap.Error(upErr))
+				debugInfo = fmt.Sprintf("Fallback text MinIO upload failed: %v", upErr)
 			} else if result != nil {
 				audioURL = result.URL
+				debugInfo = "Success (Text Fallback)"
 			}
+		} else {
+			debugInfo = "Storage service is not configured"
 		}
 
-		if err := s.routeRepo.UpdatePointStory(ctx, routeID, point.ID, audioURL, storyText); err != nil {
+		if err := s.routeRepo.UpdatePointStory(ctx, routeID, point.ID, audioURL, storyText, debugInfo); err != nil {
 			return nil, err
 		}
 		generated++
@@ -127,6 +135,7 @@ func (s *StorytellingService) GetStories(ctx context.Context, routeID, userID uu
 			StoryText:    point.StoryText,
 			DurationSec:  duration,
 			WeatherHint:  point.WeatherCondition,
+			DebugInfo:    point.StoryDebugInfo,
 		})
 	}
 	return stories, nil
