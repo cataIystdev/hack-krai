@@ -1120,6 +1120,60 @@ func OpenAPISpec(baseURL string) map[string]any {
 					},
 				},
 			},
+
+			// --- 3D Gaussian Splatting ---
+			"/api/v1/host/splat": map[string]any{
+				"post": map[string]any{
+					"tags":        []string{"Host Onboarding"},
+					"summary":     "Генерация 3D-сцены (Gaussian Splatting)",
+					"description": "Запускает mock pipeline генерации 3D-сцены из видеозаписи. Выбирает релевантный .splat по категории. Роль: host / b2g_admin.",
+					"operationId": "startSplatting",
+					"security":    []map[string]any{{"BearerAuth": []string{}}},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{
+									"type":     "object",
+									"required": []string{"location_id", "video_url"},
+									"properties": map[string]any{
+										"location_id": map[string]any{"type": "string", "format": "uuid"},
+										"video_url":   map[string]any{"type": "string"},
+									},
+								},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "3D-сцена сгенерирована.",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{
+										"type": "object",
+										"properties": map[string]any{
+											"success": map[string]any{"type": "boolean"},
+											"data": map[string]any{
+												"type": "object",
+												"properties": map[string]any{
+													"task_id":   map[string]any{"type": "string", "format": "uuid"},
+													"status":    map[string]any{"type": "string"},
+													"progress":  map[string]any{"type": "integer"},
+													"message":   map[string]any{"type": "string"},
+													"splat_url": map[string]any{"type": "string"},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+						"400": map[string]any{"description": "Невалидный запрос."},
+						"401": map[string]any{"description": "Отсутствует или невалидный токен."},
+						"403": map[string]any{"description": "Недостаточно прав."},
+					},
+				},
+			},
 		},
 		"components": map[string]any{
 			"schemas": map[string]any{

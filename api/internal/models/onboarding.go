@@ -181,3 +181,66 @@ func ProgressMessage(progress int) string {
 		return "готово"
 	}
 }
+
+// --- Splatting (3D Gaussian Splatting) ---
+
+// SplattingInputData — входные данные для задачи генерации 3D-сцены.
+type SplattingInputData struct {
+	// VideoURL — URL загруженного видео в MinIO.
+	VideoURL string `json:"video_url"`
+
+	// LocationID — UUID локации для привязки 3D-сцены.
+	LocationID uuid.UUID `json:"location_id"`
+}
+
+// SplattingOutputData — результат задачи генерации 3D-сцены.
+type SplattingOutputData struct {
+	// SplatURL — URL сгенерированного .splat файла в MinIO.
+	SplatURL string `json:"splat_url"`
+
+	// LocationID — UUID обновлённой локации.
+	LocationID uuid.UUID `json:"location_id"`
+}
+
+// SplattingProgressMessage возвращает описание шага splatting pipeline.
+func SplattingProgressMessage(progress int) string {
+	switch {
+	case progress <= 0:
+		return "задача в очереди"
+	case progress <= 15:
+		return "загрузка видео..."
+	case progress <= 30:
+		return "извлечение кадров..."
+	case progress <= 50:
+		return "построение облака точек..."
+	case progress <= 70:
+		return "обучение Gaussian Splatting модели..."
+	case progress <= 85:
+		return "экспорт 3D-сцены..."
+	case progress <= 95:
+		return "оптимизация и сжатие..."
+	case progress < 100:
+		return "привязка к локации..."
+	default:
+		return "3D-сцена готова"
+	}
+}
+
+// SplattingResponse — ответ на запрос генерации 3D-сцены.
+type SplattingResponse struct {
+	// TaskID — UUID задачи для опроса статуса.
+	TaskID uuid.UUID `json:"task_id"`
+
+	// Status — текущий статус задачи.
+	Status TaskStatus `json:"status"`
+
+	// Progress — прогресс (0-100).
+	Progress int `json:"progress"`
+
+	// Message — человекочитаемое описание шага.
+	Message string `json:"message"`
+
+	// SplatURL — URL .splat файла (при status=completed).
+	SplatURL string `json:"splat_url,omitempty"`
+}
+

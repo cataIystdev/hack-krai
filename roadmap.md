@@ -1199,6 +1199,21 @@ Zero-UI онбординг для владельцев локаций. Ферм�
 - [X] Mock-режим: «Козья ферма дяди Вани»
 - [X] Миграция 010 автоматически при запуске
 
+### Дополнительные изменения (Phase 10.1)
+
+**Управление фото локации:**
+- [X] `preview_image_url` и `gallery_urls` в `CreateLocationRequest` (POST /locations)
+- [X] `preview_image_url` и `gallery_urls` в `UpdateLocationRequest` (PUT /locations/{id})
+- [X] INSERT и UPDATE в репозитории поддерживают фото-поля
+
+**3D Gaussian Splatting (Mock Pipeline):**
+- [X] POST /host/splat — запуск mock pipeline
+- [X] Модели: SplattingInputData, SplattingOutputData, SplattingResponse
+- [X] Сервис: StartSplatting с прогрессом (7 шагов) и category-based mock selection
+- [X] Маппинг category→splat: winery→garden, nature→stump, gastro→counter, resort→room, extreme→bicycle, cultural→bonsai
+- [X] UpdateSplatURL в LocationRepository
+- [X] OpenAPI: POST /host/splat документирован
+
 ---
 
 ## Phase 11. Booking MVP

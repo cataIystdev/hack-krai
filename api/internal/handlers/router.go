@@ -141,6 +141,7 @@ func SetupRoutes(
 		onboardingHandler := NewOnboardingHandler(onboardingService, logger)
 		hostGroup := v1.Group("/host", jwtMiddleware, locationsRBAC)
 		hostGroup.Post("/onboard", onboardingHandler.Onboard)
+		hostGroup.Post("/splat", onboardingHandler.StartSplatting)
 		hostGroup.Get("/tasks/:id", onboardingHandler.GetTaskStatus)
 		hostGroup.Get("/locations", onboardingHandler.GetHostLocations)
 	}

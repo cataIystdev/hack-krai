@@ -214,3 +214,68 @@ func parseFloat(s string, result *float64) (bool, error) {
 	*result = val
 	return true, nil
 }
+
+// StartSplatting обрабатывает POST /host/splat — запуск генерации 3D-сцены.
+// Принимает JSON: { "location_id": "uuid", "video_url": "string" }
+// Запускает mock pipeline Gaussian Splatting и возвращает SplattingResponse.
+func (h *OnboardingHandler) StartSplatting(c fiber.Ctx) error {
+	// Извлечение user_id из JWT context.
+	userIDStr, ok := c.Locals("user_id").(string)
+	if !ok || userIDStr == "" {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"success": false,
+			"message": "требуется авторизация",
+		})
+	}
+
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"success": false,
+			"message": "некорректный user_id",
+		})
+	}
+
+	// Парсинг JSON body.
+	var req struct {
+		LocationID string `json:"location_id"`
+		VideoURL   string `json:"video_url"`
+	}
+	if err := c.Bind().JSON(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"success": false,
+			"message": "некорректный JSON: location_id и video_url обязательны",
+		})
+	}
+
+	if req.LocationID == "" || req.VideoURL == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"success": false,
+			"message": "location_id и video_url обязательны",
+		})
+	}
+
+	locationID, err := uuid.Parse(req.LocationID)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"success": false,
+			"message": "некорректный location_id",
+		})
+	}
+
+	resp, err := h.service.StartSplatting(c.Context(), userID, locationID, req.VideoURL)
+	if err != nil {
+		h.logger.Error("ошибка запуска splatting", zap.Error(err))
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"success": false,
+			"message": err.Error(),
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"success": true,
+		"message": resp.Message,
+		"data":    resp,
+	})
+}
+

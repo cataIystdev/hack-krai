@@ -76,12 +76,14 @@ func (r *LocationRepository) Create(ctx context.Context, loc *models.Location) (
 			owner_id, slug, name, description_short, description_full,
 			category, tags, price_per_night, capacity, access_level, density_level,
 			child_friendly, address, is_published,
+			preview_image_url, gallery_urls,
 			geo
 		) VALUES (
 			$1, $2, $3, $4, $5,
 			$6, $7, $8, $9, $10, $11,
 			$12, $13, $14,
-			ST_SetSRID(ST_MakePoint($15, $16), 4326)
+			$15, $16,
+			ST_SetSRID(ST_MakePoint($17, $18), 4326)
 		)
 		RETURNING ` + locationColumns
 
@@ -91,6 +93,7 @@ func (r *LocationRepository) Create(ctx context.Context, loc *models.Location) (
 		loc.Category, loc.Tags, loc.PricePerNight, loc.Capacity,
 		loc.AccessLevel, loc.DensityLevel, loc.ChildFriendly,
 		loc.Address, loc.IsPublished,
+		loc.PreviewImageURL, loc.GalleryURLs,
 		loc.Longitude, loc.Latitude,
 	)
 
@@ -235,6 +238,16 @@ func (r *LocationRepository) Update(ctx context.Context, id, ownerID string, req
 		setClauses = append(setClauses, fmt.Sprintf("geo = ST_SetSRID(ST_MakePoint($%d, $%d), 4326)", argIdx, argIdx+1))
 		args = append(args, *req.Longitude, *req.Latitude)
 		argIdx += 2
+	}
+	if req.PreviewImageURL != nil {
+		setClauses = append(setClauses, fmt.Sprintf("preview_image_url = $%d", argIdx))
+		args = append(args, *req.PreviewImageURL)
+		argIdx++
+	}
+	if req.GalleryURLs != nil {
+		setClauses = append(setClauses, fmt.Sprintf("gallery_urls = $%d", argIdx))
+		args = append(args, req.GalleryURLs)
+		argIdx++
 	}
 
 	args = append(args, id)
@@ -569,3 +582,24 @@ func (r *LocationRepository) FindByOwnerID(ctx context.Context, ownerID uuid.UUI
 	return locations, nil
 }
 
+// UpdateSplatURL обновляет URL 3D-сцены для локации.
+// Вызывается из splatting pipeline после генерации .splat файла.
+func (r *LocationRepository) UpdateSplatURL(ctx context.Context, locationID uuid.UUID, splatURL string) error {
+	tag, err := r.pg.Pool.Exec(ctx,
+		`UPDATE locations SET splat_url = $1, updated_at = NOW() WHERE id = $2`,
+		splatURL, locationID,
+	)
+	if err != nil {
+		return fmt.Errorf("ошибка обновления splat_url: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrLocationNotFound
+	}
+
+	r.logger.Info("splat_url обновлён",
+		zap.String("location_id", locationID.String()),
+		zap.String("splat_url", splatURL),
+	)
+
+	return nil
+}

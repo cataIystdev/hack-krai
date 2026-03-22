@@ -391,3 +391,136 @@ func buildLocationEmbeddingText(data *ai.LocationData) string {
 	}
 	return strings.Join(parts, ". ")
 }
+
+// --- 3D Gaussian Splatting (Mock Pipeline) ---
+
+// StartSplatting запускает mock pipeline генерации 3D-сцены из видео.
+// В MVP — выбирает релевантный существующий .splat файл по категории локации.
+// Pipeline: загрузка видео → извлечение кадров → облако точек → обучение GS → экспорт → оптимизация → привязка.
+func (s *OnboardingService) StartSplatting(
+	ctx context.Context,
+	userID uuid.UUID,
+	locationID uuid.UUID,
+	videoURL string,
+) (*models.SplattingResponse, error) {
+	start := time.Now()
+
+	s.logger.Info("начало 3D splatting pipeline",
+		zap.String("user_id", userID.String()),
+		zap.String("location_id", locationID.String()),
+		zap.String("video_url", videoURL),
+	)
+
+	// Проверка существования локации и прав владельца.
+	location, err := s.locationRepo.FindByID(ctx, locationID.String())
+	if err != nil {
+		return nil, fmt.Errorf("локация не найдена: %w", err)
+	}
+	if location.OwnerID != userID {
+		return nil, fmt.Errorf("нет прав на эту локацию")
+	}
+
+	// Создание задачи.
+	inputData := models.SplattingInputData{
+		VideoURL:   videoURL,
+		LocationID: locationID,
+	}
+	inputJSON, _ := json.Marshal(inputData)
+	task, err := s.taskRepo.Create(ctx, userID, models.TaskTypeSplatting, inputJSON)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка создания задачи splatting: %w", err)
+	}
+
+	// Mock pipeline: симуляция шагов с прогрессом.
+	steps := []struct {
+		progress int
+		delay    time.Duration
+	}{
+		{15, time.Duration(s.demoLatency/3) * time.Millisecond},
+		{30, time.Duration(s.demoLatency/3) * time.Millisecond},
+		{50, time.Duration(s.demoLatency/2) * time.Millisecond},
+		{70, time.Duration(s.demoLatency) * time.Millisecond},
+		{85, time.Duration(s.demoLatency/2) * time.Millisecond},
+		{95, time.Duration(s.demoLatency/4) * time.Millisecond},
+	}
+
+	for _, step := range steps {
+		time.Sleep(step.delay)
+		if err := s.taskRepo.UpdateProgress(ctx, task.ID, models.TaskStatusProcessing, step.progress); err != nil {
+			s.logger.Warn("ошибка обновления прогресса splatting", zap.Error(err))
+		}
+	}
+
+	// Выбор релевантного mock .splat файла по категории.
+	splatURL := selectMockSplatURL(location.Category)
+
+	// Обновление splat_url локации.
+	if err := s.locationRepo.UpdateSplatURL(ctx, locationID, splatURL); err != nil {
+		errMsg := err.Error()
+		_ = s.taskRepo.Fail(ctx, task.ID, errMsg)
+		return &models.SplattingResponse{
+			TaskID:   task.ID,
+			Status:   models.TaskStatusFailed,
+			Progress: 95,
+			Message:  "ошибка привязки 3D-сцены: " + errMsg,
+		}, nil
+	}
+
+	// Завершение задачи.
+	outputData := models.SplattingOutputData{
+		SplatURL:   splatURL,
+		LocationID: locationID,
+	}
+	outputJSON, _ := json.Marshal(outputData)
+	if err := s.taskRepo.Complete(ctx, task.ID, outputJSON); err != nil {
+		s.logger.Warn("ошибка завершения задачи splatting", zap.Error(err))
+	}
+
+	s.logger.Info("3D splatting pipeline завершён",
+		zap.String("task_id", task.ID.String()),
+		zap.String("splat_url", splatURL),
+		zap.Duration("total_duration", time.Since(start)),
+	)
+
+	return &models.SplattingResponse{
+		TaskID:   task.ID,
+		Status:   models.TaskStatusCompleted,
+		Progress: 100,
+		Message:  models.SplattingProgressMessage(100),
+		SplatURL: splatURL,
+	}, nil
+}
+
+// selectMockSplatURL выбирает релевантный mock .splat файл на основе категории локации.
+// Маппинг основан на реальных данных сервера:
+//   - winery → garden.splat (виноградники, открытые пространства)
+//   - farm → kitchen.splat (фермерские постройки, внутренние помещения)
+//   - nature → stump.splat (природные объекты, деревья)
+//   - gastro → counter.splat (прилавки, интерьеры)
+//   - resort/guesthouse → room.splat (комнаты, помещения)
+//   - extreme → bicycle.splat (активный отдых)
+//   - cultural → bonsai.splat (культурные объекты)
+//   - trail → stump.splat (тропы, природа)
+func selectMockSplatURL(category string) string {
+	const base = "http://141.98.7.225:9102/deepkrai-media/locations/splat/"
+
+	categoryMap := map[string]string{
+		"winery":     "garden.splat",
+		"farm":       "kitchen.splat",
+		"nature":     "stump.splat",
+		"gastro":     "counter.splat",
+		"resort":     "room.splat",
+		"guesthouse": "room.splat",
+		"extreme":    "bicycle.splat",
+		"cultural":   "bonsai.splat",
+		"trail":      "stump.splat",
+	}
+
+	if splat, ok := categoryMap[strings.ToLower(category)]; ok {
+		return base + splat
+	}
+
+	// Fallback: garden.splat — наиболее универсальный.
+	return base + "garden.splat"
+}
+
