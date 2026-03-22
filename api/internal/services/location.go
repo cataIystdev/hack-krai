@@ -93,6 +93,11 @@ func (s *LocationService) Create(ctx context.Context, ownerID string, req *model
 		loc.Tags = []string{}
 	}
 
+	// Fallback: если preview не задан, берём первую фотку из галереи.
+	if loc.PreviewImageURL == "" && len(loc.GalleryURLs) > 0 {
+		loc.PreviewImageURL = loc.GalleryURLs[0]
+	}
+
 	created, err := s.repo.Create(ctx, loc)
 	if err != nil {
 		return nil, err

@@ -248,6 +248,18 @@ func (r *LocationRepository) Update(ctx context.Context, id, ownerID string, req
 		setClauses = append(setClauses, fmt.Sprintf("gallery_urls = $%d", argIdx))
 		args = append(args, req.GalleryURLs)
 		argIdx++
+
+		// Fallback: если gallery обновляется, а preview не задан — берём первую фотку.
+		if req.PreviewImageURL == nil && len(req.GalleryURLs) > 0 {
+			var currentPreview string
+			_ = r.pg.Pool.QueryRow(ctx, `SELECT COALESCE(preview_image_url, '') FROM locations WHERE id = $1`, id).Scan(&currentPreview)
+			if currentPreview == "" {
+				first := req.GalleryURLs[0]
+				setClauses = append(setClauses, fmt.Sprintf("preview_image_url = $%d", argIdx))
+				args = append(args, first)
+				argIdx++
+			}
+		}
 	}
 
 	args = append(args, id)
