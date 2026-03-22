@@ -38,7 +38,7 @@
 | Pipeline генерации | 🔶 PARTIAL | Сделан mock-пайплайн (POST /host/splat) для демо-целей. Реальной интеграции с Luma AI API нет. |
 
 ### 🚗 Фича 4: AI Live Routing & Storytelling
-| Функционал | Статус | Комментарий |
+| Функционал | Статус | Комментарий | 
 |---|---|---|
 | AI Аудиогид (ElevenLabs TTS) | ✅ DONE | Интеграция с ElevenLabs завершена, генерит mp3 в MinIO и возвращает URL. Работает fallback на txt. |
 | Базовый роутинг | ✅ DONE | `POST /api/v1/route/build` работает логически. |
@@ -99,6 +99,6 @@
 - [x] Написать воркер-генератор событий (`event-ingestion` middleware + ClickHouse consumer) для стриминга в аналитику.
 - [x] Сделать аналитические эндпоинты для B2G (`/analytics/heatmap`, `/analytics/predictions`).
 
-### 5. Offline Sync (Phase 15)
-- Собирать ZIP-bundle маршрута на сервере (`/api/v1/route/{id}/offline-bundle`).
-- Реализовать endpoint синхронизации офлайн-событий.
+### ✅ 5. Offline Sync (Phase 15)
+- [x] Собирать ZIP-bundle маршрута на сервере (`/api/v1/route/{id}/offline-bundle`).
+- [x] Реализовать endpoint синхронизации офлайн-событий.
