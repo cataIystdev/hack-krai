@@ -181,6 +181,11 @@ type MinIOConfig struct {
 
 	// UseSSL — использовать ли SSL для подключения.
 	UseSSL bool `mapstructure:"use_ssl"`
+
+	// PublicURL — публичный базовый URL для доступа к файлам (например http://141.98.7.225:9102).
+	// Если задан, Upload() формирует прямой URL: {PublicURL}/{bucket}/{key}.
+	// Если пуст, используется presigned URL через внутренний MinIO endpoint.
+	PublicURL string `mapstructure:"public_url"`
 }
 
 // Endpoint формирует строку адреса для подключения к MinIO API.

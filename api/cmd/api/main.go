@@ -68,7 +68,7 @@ func main() {
 	// Сервис хранилища (MinIO).
 	var storageService *services.StorageService
 	if dbManager.MinIO != nil {
-		storageService = services.NewStorageService(dbManager.MinIO, logger)
+		storageService = services.NewStorageService(dbManager.MinIO, cfg.MinIO.PublicURL, logger)
 	} else {
 		logger.Warn("MinIO недоступен, загрузка файлов будет отключена")
 	}

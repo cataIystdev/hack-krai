@@ -110,6 +110,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("MINIO_ROOT_PASSWORD", "")
 	v.SetDefault("MINIO_BUCKET", "deepkrai-media")
 	v.SetDefault("MINIO_USE_SSL", false)
+	v.SetDefault("MINIO_PUBLIC_URL", "")
 
 	// JWT
 	v.SetDefault("JWT_SECRET", "")
@@ -142,6 +143,7 @@ func bindEnvVariables(v *viper.Viper) {
 		"CLICKHOUSE_USER", "CLICKHOUSE_PASSWORD", "CLICKHOUSE_DB",
 		"MINIO_HOST", "MINIO_API_PORT", "MINIO_CONSOLE_PORT",
 		"MINIO_ROOT_USER", "MINIO_ROOT_PASSWORD", "MINIO_BUCKET", "MINIO_USE_SSL",
+		"MINIO_PUBLIC_URL",
 		"JWT_SECRET", "JWT_ACCESS_TTL_MINUTES", "JWT_REFRESH_TTL_HOURS", "JWT_ISSUER",
 		"AI_BASE_URL", "AI_API_KEY", "AI_WHISPER_MODEL", "AI_LLM_MODEL", "AI_EMBEDDINGS_MODEL", "AI_EMBEDDINGS_BASE_URL",
 		"VOSK_HOST", "VOSK_PORT",
@@ -204,6 +206,7 @@ func buildConfig(v *viper.Viper) *AppConfig {
 			RootPassword: v.GetString("MINIO_ROOT_PASSWORD"),
 			Bucket:       v.GetString("MINIO_BUCKET"),
 			UseSSL:       v.GetBool("MINIO_USE_SSL"),
+			PublicURL:    v.GetString("MINIO_PUBLIC_URL"),
 		},
 		JWT: JWTConfig{
 			SecretKey:             v.GetString("JWT_SECRET"),
