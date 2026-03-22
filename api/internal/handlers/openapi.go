@@ -1132,13 +1132,13 @@ func OpenAPISpec(baseURL string) map[string]any {
 					"requestBody": map[string]any{
 						"required": true,
 						"content": map[string]any{
-							"application/json": map[string]any{
+							"multipart/form-data": map[string]any{
 								"schema": map[string]any{
 									"type":     "object",
-									"required": []string{"location_id", "video_url"},
+									"required": []string{"location_id", "video"},
 									"properties": map[string]any{
-										"location_id": map[string]any{"type": "string", "format": "uuid"},
-										"video_url":   map[string]any{"type": "string"},
+										"location_id": map[string]any{"type": "string", "format": "uuid", "description": "UUID локации для привязки 3D-сцены"},
+										"video":       map[string]any{"type": "string", "format": "binary", "description": "Видеофайл обхода локации (mp4, webm)"},
 									},
 								},
 							},

@@ -395,20 +395,22 @@ func buildLocationEmbeddingText(data *ai.LocationData) string {
 // --- 3D Gaussian Splatting (Mock Pipeline) ---
 
 // StartSplatting запускает mock pipeline генерации 3D-сцены из видео.
-// В MVP — выбирает релевантный существующий .splat файл по категории локации.
+// В MVP — загружает видео в MinIO, выбирает релевантный .splat файл по категории.
 // Pipeline: загрузка видео → извлечение кадров → облако точек → обучение GS → экспорт → оптимизация → привязка.
 func (s *OnboardingService) StartSplatting(
 	ctx context.Context,
 	userID uuid.UUID,
 	locationID uuid.UUID,
-	videoURL string,
+	videoData []byte,
+	filename string,
 ) (*models.SplattingResponse, error) {
 	start := time.Now()
 
 	s.logger.Info("начало 3D splatting pipeline",
 		zap.String("user_id", userID.String()),
 		zap.String("location_id", locationID.String()),
-		zap.String("video_url", videoURL),
+		zap.String("filename", filename),
+		zap.Int("video_bytes", len(videoData)),
 	)
 
 	// Проверка существования локации и прав владельца.
@@ -418,6 +420,18 @@ func (s *OnboardingService) StartSplatting(
 	}
 	if location.OwnerID != userID {
 		return nil, fmt.Errorf("нет прав на эту локацию")
+	}
+
+	// Загрузка видео в MinIO.
+	var videoURL string
+	if s.storage != nil && len(videoData) > 0 {
+		objectName := "video/" + GenerateObjectName(filename)
+		result, err := s.storage.Upload(ctx, objectName, bytes.NewReader(videoData), int64(len(videoData)), "video/mp4")
+		if err != nil {
+			s.logger.Warn("ошибка загрузки видео в MinIO", zap.Error(err))
+		} else if result != nil {
+			videoURL = result.URL
+		}
 	}
 
 	// Создание задачи.

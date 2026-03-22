@@ -216,8 +216,11 @@ func parseFloat(s string, result *float64) (bool, error) {
 }
 
 // StartSplatting обрабатывает POST /host/splat — запуск генерации 3D-сцены.
-// Принимает JSON: { "location_id": "uuid", "video_url": "string" }
-// Запускает mock pipeline Gaussian Splatting и возвращает SplattingResponse.
+// Принимает multipart/form-data:
+//   - video (обязательно) — видеофайл для обработки
+//   - location_id (обязательно) — UUID локации для привязки 3D-сцены
+//
+// Загружает видео в MinIO, запускает mock pipeline Gaussian Splatting.
 func (h *OnboardingHandler) StartSplatting(c fiber.Ctx) error {
 	// Извлечение user_id из JWT context.
 	userIDStr, ok := c.Locals("user_id").(string)
@@ -236,26 +239,16 @@ func (h *OnboardingHandler) StartSplatting(c fiber.Ctx) error {
 		})
 	}
 
-	// Парсинг JSON body.
-	var req struct {
-		LocationID string `json:"location_id"`
-		VideoURL   string `json:"video_url"`
-	}
-	if err := c.Bind().JSON(&req); err != nil {
+	// Извлечение location_id из form.
+	locationIDStr := c.FormValue("location_id")
+	if locationIDStr == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"success": false,
-			"message": "некорректный JSON: location_id и video_url обязательны",
+			"message": "поле location_id обязательно",
 		})
 	}
 
-	if req.LocationID == "" || req.VideoURL == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"success": false,
-			"message": "location_id и video_url обязательны",
-		})
-	}
-
-	locationID, err := uuid.Parse(req.LocationID)
+	locationID, err := uuid.Parse(locationIDStr)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"success": false,
@@ -263,7 +256,35 @@ func (h *OnboardingHandler) StartSplatting(c fiber.Ctx) error {
 		})
 	}
 
-	resp, err := h.service.StartSplatting(c.Context(), userID, locationID, req.VideoURL)
+	// Извлечение видеофайла из multipart.
+	videoFile, err := c.FormFile("video")
+	if err != nil || videoFile == nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"success": false,
+			"message": "поле video обязательно (видеофайл локации)",
+		})
+	}
+
+	// Чтение видеоданных.
+	file, err := videoFile.Open()
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"success": false,
+			"message": "ошибка чтения видеофайла",
+		})
+	}
+	defer file.Close()
+
+	videoData, err := io.ReadAll(file)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"success": false,
+			"message": "ошибка чтения видеоданных",
+		})
+	}
+
+	// Запуск pipeline.
+	resp, err := h.service.StartSplatting(c.Context(), userID, locationID, videoData, videoFile.Filename)
 	if err != nil {
 		h.logger.Error("ошибка запуска splatting", zap.Error(err))
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
