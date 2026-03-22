@@ -222,6 +222,26 @@ func main() {
 		logger.Info("сервис отзывов инициализирован")
 	}
 
+	// --- 4.9 Аналитика B2G (Phase 14) ---
+	var telemetryService *services.TelemetryService
+	var analyticsHandler *handlers.AnalyticsHandler
+	if dbManager.Redis != nil {
+		telemetryService = services.NewTelemetryService(dbManager.Redis, logger)
+		_ = telemetryService // TODO: Интегрировать в роутинг
+		logger.Info("сервис телеметрии инициализирован")
+	}
+	if dbManager.Redis != nil && dbManager.ClickHouse != nil {
+		analyticsRepo := database.NewAnalyticsRepository(dbManager.ClickHouse, logger)
+		analyticsWorker := services.NewAnalyticsWorker(dbManager.Redis, analyticsRepo, logger)
+		analyticsHandler = handlers.NewAnalyticsHandler(analyticsRepo, logger)
+		
+		// Запуск консьюмера в фоне
+		go analyticsWorker.Start(ctx)
+		logger.Info("сервис и воркер аналитики B2G инициализированы")
+	}
+
+	// TODO: Интегрировать telemetryService.PushEvent() в роутинг / бронирование
+
 	// --- 5. Создание HTTP-сервера Fiber ---
 	app := fiber.New(fiber.Config{
 		// ServerHeader — заголовок Server в HTTP-ответах.
@@ -253,7 +273,7 @@ func main() {
 	app.Use(middleware.NewCORS())
 
 	// --- 7. Регистрация маршрутов ---
-	handlers.SetupRoutes(app, dbManager, storageService, authService, jwtService, userRepo, locationService, tripService, vibeService, mapService, routeService, onboardingService, bookingService, weatherService, storytellingService, reviewService, logger)
+	handlers.SetupRoutes(app, dbManager, storageService, authService, jwtService, userRepo, locationService, tripService, vibeService, mapService, routeService, onboardingService, bookingService, weatherService, storytellingService, reviewService, analyticsHandler, logger)
 
 	// --- 7.5 Bootstrap демо-пользователей ---
 	// Идемпотентное создание предустановленных аккаунтов для тестирования и интеграции.

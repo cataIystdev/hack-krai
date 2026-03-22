@@ -33,6 +33,7 @@ func SetupRoutes(
 	weatherService *services.WeatherService,
 	storytellingService *services.StorytellingService,
 	reviewService *services.ReviewService,
+	analyticsHandler *AnalyticsHandler,
 	logger *zap.Logger,
 ) {
 	// Корневой маршрут — базовая информация о сервере.
@@ -156,7 +157,7 @@ func SetupRoutes(
 	}
 
 	if reviewHandler != nil {
-		v1.Post("/reviews", jwtMiddleware, reviewHandler.Create)
+		v1.Post("/locations/:id/reviews", jwtMiddleware, reviewHandler.Create)
 	}
 
 	// Поездки — защищённые эндпоинты (создание, детали, invite, участники, маршрут).
@@ -167,6 +168,13 @@ func SetupRoutes(
 	tripsProtected.Put("/:id", tripHandler.Update)
 	tripsProtected.Post("/:id/invite", tripHandler.GenerateInvite)
 	tripsProtected.Get("/:id/members", tripHandler.ListMembers)
+
+	// --- Аналитика B2G ---
+	if analyticsHandler != nil {
+		analytics := v1.Group("/analytics", jwtMiddleware)
+		analytics.Get("/heatmap", analyticsHandler.GetHeatmap)
+		analytics.Get("/predictions", analyticsHandler.GetPredictions)
+	}
 
 	// Маршруты — защищённые эндпоинты (ручной и trip-aware режимы).
 	if routeService != nil {
