@@ -49,7 +49,13 @@ func (h *WSHandler) doUpgrade(c fiber.Ctx, channel, userID string) error {
 		CheckOrigin: func(ctx *fasthttp.RequestCtx) bool { return true },
 	}
 
-	err := upgrader.Upgrade(c.Context(), func(conn *websocket.Conn) {
+	fastHTTPCtx, ok := c.Context().(*fasthttp.RequestCtx)
+	if !ok {
+		h.logger.Error("failed to assert context to *fasthttp.RequestCtx")
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "internal context error"})
+	}
+
+	err := upgrader.Upgrade(fastHTTPCtx, func(conn *websocket.Conn) {
 		h.hub.RegisterFastHTTP(channel, conn)
 		defer h.hub.UnregisterFastHTTP(channel, conn)
 
