@@ -64,9 +64,9 @@ func TestWeatherService_GetRegionWeather(t *testing.T) {
 
 	// Verify the weather points have required fields populated.
 	for _, pt := range points {
-		assert.NotEmpty(t, pt.Name, "Название точки не должно быть пустым")
-		assert.NotZero(t, pt.Lat, "Широта должна быть ненулевой")
-		assert.NotZero(t, pt.Lon, "Долгота должна быть ненулевой")
+		assert.NotEmpty(t, pt.Point, "Название точки не должно быть пустым")
+		assert.NotZero(t, pt.Latitude, "Широта должна быть ненулевой")
+		assert.NotZero(t, pt.Longitude, "Долгота должна быть ненулевой")
 	}
 }
 
@@ -82,11 +82,11 @@ func TestWeatherService_GetTravelAdvisory(t *testing.T) {
 
 func TestWeatherPointModel(t *testing.T) {
 	pt := models.WeatherPoint{
-		Name:      "Краснодар",
-		Lat:       45.0,
-		Lon:       39.0,
+		Point:     "Краснодар",
+		Latitude:  45.0,
+		Longitude: 39.0,
 		Condition: "clear",
 	}
-	assert.Equal(t, "Краснодар", pt.Name)
-	assert.Equal(t, 45.0, pt.Lat)
+	assert.Equal(t, "Краснодар", pt.Point)
+	assert.Equal(t, 45.0, pt.Latitude)
 }

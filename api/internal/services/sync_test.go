@@ -66,7 +66,7 @@ func TestSyncService_ProcessSyncPayload_ReviewWithNilLocationID(t *testing.T) {
 	nilLocID := "00000000-0000-0000-0000-000000000000"
 	payload := &models.SyncPayload{
 		Reviews: []models.CreateReviewRequest{
-			{LocationID: &nilLocID, Rating: 5, Comment: "test"},
+			{LocationID: &nilLocID, Rating: 5, Text: "test"},
 		},
 	}
 
