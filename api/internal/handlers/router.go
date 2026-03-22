@@ -36,6 +36,7 @@ func SetupRoutes(
 	analyticsHandler *AnalyticsHandler,
 	offlineHandler *OfflineHandler,
 	syncHandler *SyncHandler,
+	wsHandler *WSHandler,
 	logger *zap.Logger,
 ) {
 	// Корневой маршрут — базовая информация о сервере.
@@ -164,6 +165,13 @@ func SetupRoutes(
 
 	if syncHandler != nil {
 		v1.Post("/sync", jwtMiddleware, syncHandler.SyncOfflineData)
+	}
+
+	// WebSocket endpoints.
+	if wsHandler != nil {
+		ws := app.Group("/ws/v1")
+		ws.Get("/weather", wsHandler.HandleWeather)
+		ws.Get("/notifications", jwtMiddleware, wsHandler.HandleNotifications)
 	}
 
 	// Поездки — защищённые эндпоинты (создание, детали, invite, участники, маршрут).

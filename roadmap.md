@@ -21,15 +21,15 @@
 | Голосовое профилирование | ✅ DONE | Whisper + LLM + Qdrant. Ограничение аудио 25МБ. Работает стабильно. |
 | Эмоциональные 3D-свайпы | ✅ DONE | Tinder-механика на `scene_vibes` и Qdrant. |
 | Trip Details (бюджет, транспорт и т.д.) | ✅ DONE | Редактирование, валидация форматов (day_trip, weekend, multi_day). |
-| Групповое планирование (Join by invite) | 🔶 PARTIAL | Приглашения работают. Но `merged_vibe_vector_id` и интеграция с роутингом ещё не доведены до конца. |
-| Строгий Privacy & Concurrency | 🔶 PARTIAL | Базовая защита есть, но нужен строгий access_level и защита от parallel JOIN race condition. |
+| Групповое планирование (Join by invite) | ✅ DONE | Приглашения, `AddMemberAtomic`, `MergeGroupVibes`, потребление merged вектора в роутинге. |
+| Строгий Privacy & Concurrency | ✅ DONE | Membership-guard в `BuildTripRoute`. `AddMemberAtomic` с `SELECT FOR UPDATE`. |
 
 ### 🌍 Фича 2: Интерактивная 3D-карта
 | Функционал | Статус | Комментарий |
 |---|---|---|
 | Map API (bbox, density, recommendations) | ✅ DONE | Эндпоинты возвращают нужный JSON (цветовая загруженность 🔴🟡🟢, координаты). |
 | Live-погода по регионам | ✅ DONE | `GET /api/v1/weather/region` возвращает 5 ключевых точек с severity. |
-| WebSocket WebSocket push погоды | ❌ TODO | `/ws/v1/weather` не реализован. |
+| WebSocket WebSocket push погоды | ✅ DONE | `/ws/v1/weather` + `/ws/v1/notifications` реализованы. WeatherTicker 60с. |
 
 ### 🧊 Фича 3: Immersive 3D-экскурсии (Gaussian Splatting)
 | Функционал | Статус | Комментарий |
@@ -82,18 +82,18 @@
 
 Основываясь на чекапе выше, у нас вырисовывается четкий бэклог до 100% покрытия:
 
-### 1. Архитектурный P0 (Долги Core MVP)
-- **Privacy & Concurrency в Trips**: Доделать строгую защиту доступов (members / join / details) и исправить гонки при параллельном вступлении в группу.
-- **Merged Vibe Vector**: Дописать логику смешивания векторов участников группы и подбор маршрута на основе "компромиссного" вектора.
+### ✅ 1. Архитектурный P0 (Долги Core MVP) — Phase 16
+- [x] **Privacy & Concurrency в Trips**: membership-проверка в `BuildTripRoute`, `AddMemberAtomic` с `SELECT FOR UPDATE`.
+- [x] **Merged Vibe Vector**: `computeVibeScores` использует предрассчитанный `merged_vibe_vector_id` из Qdrant `group_vibes` с fallback на per-member averaging.
 
 ### ✅ 2. Социалка и Геймификация (Phase 13)
 - [x] Написать `review-service` (создание отзывов).
 - [x] Реализовать механизм обновления `karma` юзера на основе отзывов.
 - [x] Опционально: фильтрация `hidden` локаций в `map-service`.
 
-### 3. Инфраструктура реального времени
-- Реализовать WebSocket Hub для `/ws/v1/weather` и `/ws/v1/notifications` (PubSub через Redis).
-- Дописать генератор погоды (чтобы `weather-service` пушил апдейты в каналы).
+### ✅ 3. Инфраструктура реального времени — Phase 17
+- [x] WebSocket Hub для `/ws/v1/weather` и `/ws/v1/notifications` (PubSub через Redis).
+- [x] WeatherTicker — пуш обновлений погоды каждые 60с через WS Hub.
 
 ### ✅ 4. Data & Analytics (Phase 14)
 - [x] Написать воркер-генератор событий (`event-ingestion` middleware + ClickHouse consumer) для стриминга в аналитику.

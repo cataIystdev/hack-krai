@@ -213,6 +213,17 @@ func (s *RouteService) BuildTripRoute(ctx context.Context, tripID, userID uuid.U
 		return nil, fmt.Errorf("ошибка загрузки поездки: %w", err)
 	}
 
+	// Проверка доступа: только участник или создатель может строить маршрут.
+	if trip.CreatorID != userID {
+		isMember, err := s.tripRepo.IsMember(ctx, tripID, userID)
+		if err != nil {
+			return nil, fmt.Errorf("ошибка проверки membership: %w", err)
+		}
+		if !isMember {
+			return nil, &ValidationError{Message: "нет прав на построение маршрута для этой поездки"}
+		}
+	}
+
 	members, err := s.tripRepo.FindMembersByTripID(ctx, tripID)
 	if err != nil {
 		s.logger.Warn("ошибка загрузки участников поездки", zap.Error(err))
@@ -422,43 +433,67 @@ func (s *RouteService) computeVibeScores(ctx context.Context, trip *models.Trip,
 		return nil
 	}
 
-	// Сбор вежторов участников.
-	var vectors [][]float32
+	var merged []float32
 	var childCount int
 
-	for _, m := range members {
-		if m.VibeVectorID == nil {
-			continue
-		}
-		vec, err := s.vibeRepo.GetVibeVector(ctx, database.CollectionUserVibes, *m.VibeVectorID)
-		if err != nil {
-			s.logger.Debug("пропуск вектора участника",
-				zap.String("member_id", m.ID.String()),
+	// Приоритет: использовать предрассчитанный merged_vibe_vector_id из group_vibes.
+	if trip.MergedVibeVectorID != nil {
+		vec, err := s.vibeRepo.GetVibeVector(ctx, CollectionGroupVibes, *trip.MergedVibeVectorID)
+		if err == nil && len(vec) > 0 {
+			merged = vec
+			s.logger.Info("используем предрассчитанный merged vibe vector",
+				zap.String("merged_vector_id", trip.MergedVibeVectorID.String()),
+			)
+			// Считаем детей для child_friendly бонуса.
+			for _, m := range members {
+				if m.IsChild {
+					childCount++
+				}
+			}
+		} else {
+			s.logger.Warn("не удалось загрузить merged vibe vector, fallback на per-member",
 				zap.Error(err),
 			)
-			continue
-		}
-		vectors = append(vectors, vec)
-		if m.IsChild {
-			childCount++
 		}
 	}
 
-	// Попытка использовать vibe_vector_id из самого трипа (вектор создателя).
-	if len(vectors) == 0 && trip.VibeVectorID != nil {
-		vec, err := s.vibeRepo.GetVibeVector(ctx, database.CollectionUserVibes, *trip.VibeVectorID)
-		if err == nil {
+	// Fallback: построить merged vector из индивидуальных векторов участников.
+	if merged == nil {
+		var vectors [][]float32
+
+		for _, m := range members {
+			if m.VibeVectorID == nil {
+				continue
+			}
+			vec, err := s.vibeRepo.GetVibeVector(ctx, database.CollectionUserVibes, *m.VibeVectorID)
+			if err != nil {
+				s.logger.Debug("пропуск вектора участника",
+					zap.String("member_id", m.ID.String()),
+					zap.Error(err),
+				)
+				continue
+			}
 			vectors = append(vectors, vec)
+			if m.IsChild {
+				childCount++
+			}
 		}
-	}
 
-	if len(vectors) == 0 {
-		s.logger.Info("нет vibe-векторов, скоринг пропущен")
-		return nil
-	}
+		// Попытка использовать vibe_vector_id из самого трипа (вектор создателя).
+		if len(vectors) == 0 && trip.VibeVectorID != nil {
+			vec, err := s.vibeRepo.GetVibeVector(ctx, database.CollectionUserVibes, *trip.VibeVectorID)
+			if err == nil {
+				vectors = append(vectors, vec)
+			}
+		}
 
-	// Вычисление merged vector (среднее арифметическое).
-	merged := s.mergeVectors(vectors)
+		if len(vectors) == 0 {
+			s.logger.Info("нет vibe-векторов, скоринг пропущен")
+			return nil
+		}
+
+		merged = s.mergeVectors(vectors)
+	}
 
 	// Поиск ближайших локаций через Qdrant.
 	searchLimit := uint64(limit * 3)
@@ -479,7 +514,7 @@ func (s *RouteService) computeVibeScores(ctx context.Context, trip *models.Trip,
 	}
 
 	s.logger.Info("vibe-скоринг выполнен",
-		zap.Int("vectors_merged", len(vectors)),
+		zap.Int("merged_dim", len(merged)),
 		zap.Int("children", childCount),
 		zap.Int("scored_locations", len(scores)),
 	)

@@ -256,6 +256,20 @@ func main() {
 		logger.Info("сервис offline-синхронизации инициализирован")
 	}
 
+	// --- 4.11 WebSocket Hub (Phase 17) ---
+	wsHub := services.NewWSHub(dbManager.Redis, logger)
+	var wsHandler *handlers.WSHandler
+	if wsHub != nil {
+		wsHandler = handlers.NewWSHandler(wsHub, logger)
+		logger.Info("WebSocket Hub инициализирован")
+	}
+
+	// Weather Ticker — периодическая рассылка погоды через WS.
+	if wsHub != nil && weatherService != nil {
+		_ = services.NewWeatherTicker(weatherService, wsHub, 60*time.Second, logger)
+		logger.Info("Weather Ticker запущен (интервал 60с)")
+	}
+
 	// --- 5. Создание HTTP-сервера Fiber ---
 	app := fiber.New(fiber.Config{
 		// ServerHeader — заголовок Server в HTTP-ответах.
@@ -287,7 +301,7 @@ func main() {
 	app.Use(middleware.NewCORS())
 
 	// --- 7. Регистрация маршрутов ---
-	handlers.SetupRoutes(app, dbManager, storageService, authService, jwtService, userRepo, locationService, tripService, vibeService, mapService, routeService, onboardingService, bookingService, weatherService, storytellingService, reviewService, analyticsHandler, offlineHandler, syncHandler, logger)
+	handlers.SetupRoutes(app, dbManager, storageService, authService, jwtService, userRepo, locationService, tripService, vibeService, mapService, routeService, onboardingService, bookingService, weatherService, storytellingService, reviewService, analyticsHandler, offlineHandler, syncHandler, wsHandler, logger)
 
 	// --- 7.5 Bootstrap демо-пользователей ---
 	// Идемпотентное создание предустановленных аккаунтов для тестирования и интеграции.
