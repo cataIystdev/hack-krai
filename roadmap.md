@@ -187,13 +187,35 @@ Backend планируется так, чтобы:
 ### Пока не реализовано
 
 1. `POST /api/v1/trips/{id}/build-route`
-2. weather/live routing
-3. storytelling
-4. host onboarding
-5. booking
-6. reviews/karma/hidden gems logic
-7. analytics/B2G endpoints
-8. sync/offline support endpoints
+2. reviews/karma/hidden gems logic
+3. analytics/B2G endpoints
+4. sync/offline support endpoints
+
+### Написано в коде, но ещё не верифицировано
+
+1. booking MVP (Phase 11):
+
+   - `GET /api/v1/locations/{id}/slots`
+   - `POST /api/v1/bookings`
+   - `GET /api/v1/bookings/my`
+   - `POST /api/v1/bookings/{id}/confirm`
+   - `POST /api/v1/bookings/{id}/cancel`
+   - `GET /api/v1/host/bookings`
+2. weather/storytelling/live routing slice (Phase 12):
+
+   - `GET /api/v1/weather/region`
+   - `POST /api/v1/route/{id}/generate-stories`
+   - `GET /api/v1/route/{id}/stories`
+   - `POST /api/v1/route/{id}/rebuild`
+
+Что это означает:
+
+- код и контракты уже добавлены в репозиторий;
+- статус фаз 11 и 12 пока нельзя считать `DONE`;
+- перед переводом в completed нужны минимум:
+  - `go build ./...`
+  - `go test ./...`
+  - ручной smoke прогон новых endpoint-ов.
 
 ### Что это значит для планирования
 
@@ -203,7 +225,9 @@ Backend roadmap покрывает полный demo-first контур:
 - Фаза 5.5 (техническое усиление) -- ЗАВЕРШЕНА.
 - Demo-first flow полностью функционален: voice -> vibe -> swipe -> finalize -> map -> location detail.
 - Core MVP закрыт частично глубже demo-first: trip details, invite/join, route preview, auth hardening.
-- Основные оставшиеся gap-ы: merged group vibe, trip-aware route build, host onboarding, booking, storytelling, weather/live routing, analytics/B2G.
+- Phase 10 по roadmap закрыта как code slice.
+- Phase 11 и Phase 12 уже начаты в коде, но пока без верификации тестами и smoke-check.
+- Основные оставшиеся gap-ы: merged group vibe, уверенная верификация booking/storytelling/weather slices, analytics/B2G.
 - После code review выявлены отдельные P0 архитектурные долги в trip/auth-контуре:
   - privacy/access control для trip detail и members;
   - неконсистентный auth contract для public/auth join flow;
@@ -1230,7 +1254,30 @@ Zero-UI онбординг для владельцев локаций. Ферм�
 
 ### Current status
 
-❌ Не реализовано.
+🔶 Код написан, но не верифицирован.
+
+### Что уже написано в коде
+
+1. Миграция `011_create_bookings_tables.sql`:
+
+   - `booking_slots`
+   - `bookings`
+2. Booking endpoints:
+
+   - `GET /api/v1/locations/{id}/slots`
+   - `POST /api/v1/bookings`
+   - `GET /api/v1/bookings/my`
+   - `POST /api/v1/bookings/{id}/confirm`
+   - `POST /api/v1/bookings/{id}/cancel`
+   - `GET /api/v1/host/bookings`
+3. Атомарное резервирование capacity по диапазону дат в repository/service слое.
+4. OpenAPI и router уже обновлены под booking slice.
+
+### Почему статус ещё не `DONE`
+
+1. В текущей рабочей среде не был выполнен `go build ./...`.
+2. В текущей рабочей среде не был выполнен `go test ./...`.
+3. Не было ручного smoke-прогона booking endpoint-ов против поднятого окружения.
 
 ### Deliverables
 
@@ -1261,7 +1308,29 @@ Zero-UI онбординг для владельцев локаций. Ферм�
 
 ### Current status
 
-❌ Не реализовано.
+🔶 Код написан, но не верифицирован.
+
+### Что уже написано в коде
+
+1. Weather slice:
+
+   - `GET /api/v1/weather/region`
+2. Storytelling slice:
+
+   - `POST /api/v1/route/{id}/generate-stories`
+   - `GET /api/v1/route/{id}/stories`
+3. Live routing slice:
+
+   - `POST /api/v1/route/{id}/rebuild`
+4. В `route_points` добавлены поля для storytelling/weather metadata.
+5. Router и OpenAPI уже синхронизированы с новыми endpoint-ами.
+
+### Что пока намеренно НЕ считаем закрытым
+
+1. `/ws/v1/weather` не собран как transport layer.
+2. Реальный внешний weather provider не подключён — текущий слой mock-friendly.
+3. Реальный TTS pipeline не подключён — storytelling asset сейчас реализован как storage-backed artifact.
+4. Не выполнены `go build ./...`, `go test ./...` и ручной smoke прогон.
 
 ### Deliverables
 

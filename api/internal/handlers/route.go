@@ -16,15 +16,24 @@ import (
 
 // RouteHandler — обработчик запросов построения маршрутов.
 type RouteHandler struct {
-	routeService *services.RouteService
-	logger       *zap.Logger
+	routeService        *services.RouteService
+	storytellingService *services.StorytellingService
+	weatherService      *services.WeatherService
+	logger              *zap.Logger
 }
 
 // NewRouteHandler создаёт обработчик маршрутов.
-func NewRouteHandler(routeService *services.RouteService, logger *zap.Logger) *RouteHandler {
+func NewRouteHandler(
+	routeService *services.RouteService,
+	storytellingService *services.StorytellingService,
+	weatherService *services.WeatherService,
+	logger *zap.Logger,
+) *RouteHandler {
 	return &RouteHandler{
-		routeService: routeService,
-		logger:       logger.Named("route_handler"),
+		routeService:        routeService,
+		storytellingService: storytellingService,
+		weatherService:      weatherService,
+		logger:              logger.Named("route_handler"),
 	}
 }
 
@@ -167,4 +176,102 @@ func (h *RouteHandler) BuildTripRoute(c fiber.Ctx) error {
 		"success": true,
 		"data":    result,
 	})
+}
+
+// GenerateStories обрабатывает POST /api/v1/route/:id/generate-stories.
+func (h *RouteHandler) GenerateStories(c fiber.Ctx) error {
+	if h.storytellingService == nil {
+		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{"success": false, "message": "storytelling сервис недоступен"})
+	}
+
+	routeID, userID, err := h.extractRouteAndUser(c)
+	if err != nil {
+		return err
+	}
+
+	result, svcErr := h.storytellingService.GenerateStories(c.Context(), routeID, userID)
+	if svcErr != nil {
+		return h.handlePhase12Error(c, svcErr)
+	}
+
+	return c.Status(fiber.StatusAccepted).JSON(fiber.Map{
+		"success": true,
+		"data":    result,
+	})
+}
+
+// GetStories обрабатывает GET /api/v1/route/:id/stories.
+func (h *RouteHandler) GetStories(c fiber.Ctx) error {
+	if h.storytellingService == nil {
+		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{"success": false, "message": "storytelling сервис недоступен"})
+	}
+
+	routeID, userID, errResp := h.extractRouteAndUser(c)
+	if errResp != nil {
+		return errResp
+	}
+
+	stories, svcErr := h.storytellingService.GetStories(c.Context(), routeID, userID)
+	if svcErr != nil {
+		return h.handlePhase12Error(c, svcErr)
+	}
+
+	return c.JSON(fiber.Map{
+		"success": true,
+		"data":    stories,
+		"count":   len(stories),
+	})
+}
+
+// Rebuild обрабатывает POST /api/v1/route/:id/rebuild.
+func (h *RouteHandler) Rebuild(c fiber.Ctx) error {
+	routeID, userID, errResp := h.extractRouteAndUser(c)
+	if errResp != nil {
+		return errResp
+	}
+
+	var req models.RouteRebuildRequest
+	if err := c.Bind().JSON(&req); err != nil {
+		req = models.RouteRebuildRequest{}
+	}
+
+	result, svcErr := h.routeService.RebuildRoute(c.Context(), routeID, userID, h.weatherService, req.WeatherOverride)
+	if svcErr != nil {
+		return h.handlePhase12Error(c, svcErr)
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"success": true,
+		"data":    result,
+	})
+}
+
+func (h *RouteHandler) extractRouteAndUser(c fiber.Ctx) (uuid.UUID, uuid.UUID, error) {
+	routeID, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return uuid.Nil, uuid.Nil, c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"success": false, "message": "некорректный UUID маршрута"})
+	}
+
+	userIDStr, ok := c.Locals("user_id").(string)
+	if !ok || userIDStr == "" {
+		return uuid.Nil, uuid.Nil, c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"success": false, "message": "необходима авторизация"})
+	}
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		return uuid.Nil, uuid.Nil, c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"success": false, "message": "некорректный user_id"})
+	}
+
+	return routeID, userID, nil
+}
+
+func (h *RouteHandler) handlePhase12Error(c fiber.Ctx, err error) error {
+	switch err {
+	case services.ErrRouteNotFound:
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"success": false, "message": "маршрут не найден"})
+	case services.ErrTripForbidden:
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"success": false, "message": "нет доступа к маршруту"})
+	default:
+		h.logger.Error("ошибка phase12 route flow", zap.Error(err))
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"success": false, "message": "внутренняя ошибка сервера"})
+	}
 }

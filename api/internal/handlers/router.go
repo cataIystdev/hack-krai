@@ -29,6 +29,9 @@ func SetupRoutes(
 	mapService *services.MapService,
 	routeService *services.RouteService,
 	onboardingService *services.OnboardingService,
+	bookingService *services.BookingService,
+	weatherService *services.WeatherService,
+	storytellingService *services.StorytellingService,
 	logger *zap.Logger,
 ) {
 	// Корневой маршрут — базовая информация о сервере.
@@ -73,10 +76,21 @@ func SetupRoutes(
 	v1.Get("/locations/:id", locationHandler.GetByID)
 	v1.Get("/locations/:id/splat", locationHandler.GetSplat)
 
+	var bookingHandler *BookingHandler
+	if bookingService != nil {
+		bookingHandler = NewBookingHandler(bookingService, logger)
+		v1.Get("/locations/:id/slots", bookingHandler.ListLocationSlots)
+	}
+
 	// Карта — публичный эндпоинт (точки для маркеров).
 	if mapService != nil {
 		mapHandler := NewMapHandler(mapService, logger)
 		v1.Get("/map/locations", mapHandler.GetMapLocations)
+	}
+
+	if weatherService != nil {
+		weatherHandler := NewWeatherHandler(weatherService, logger)
+		v1.Get("/weather/region", weatherHandler.GetRegion)
 	}
 
 	// Поездки — публичный эндпоинт с необязательной JWT-аутентификацией.
@@ -116,6 +130,17 @@ func SetupRoutes(
 	locationsProtected.Put("/:id", locationsRBAC, locationHandler.Update)
 	locationsProtected.Delete("/:id", locationsRBAC, locationHandler.Delete)
 
+	if bookingHandler != nil {
+		bookingsProtected := v1.Group("/bookings", jwtMiddleware)
+		bookingsProtected.Post("/", bookingHandler.Create)
+		bookingsProtected.Get("/my", bookingHandler.ListMyBookings)
+		bookingsProtected.Post("/:id/cancel", bookingHandler.Cancel)
+
+		hostBookings := v1.Group("/host", jwtMiddleware, locationsRBAC)
+		hostBookings.Get("/bookings", bookingHandler.ListHostBookings)
+		bookingsProtected.Post("/:id/confirm", locationsRBAC, bookingHandler.ConfirmOrReject)
+	}
+
 	// Поездки — защищённые эндпоинты (создание, детали, invite, участники, маршрут).
 	tripsProtected := v1.Group("/trips", jwtMiddleware)
 	tripsProtected.Get("/", tripHandler.ListTrips)
@@ -127,9 +152,12 @@ func SetupRoutes(
 
 	// Маршруты — защищённые эндпоинты (ручной и trip-aware режимы).
 	if routeService != nil {
-		routeHandler := NewRouteHandler(routeService, logger)
+		routeHandler := NewRouteHandler(routeService, storytellingService, weatherService, logger)
 		routeGroup := v1.Group("/route", jwtMiddleware)
 		routeGroup.Post("/build", routeHandler.BuildRoute)
+		routeGroup.Post("/:id/generate-stories", routeHandler.GenerateStories)
+		routeGroup.Get("/:id/stories", routeHandler.GetStories)
+		routeGroup.Post("/:id/rebuild", routeHandler.Rebuild)
 
 		// Trip-aware построение маршрута.
 		tripsProtected.Post("/:id/build-route", routeHandler.BuildTripRoute)

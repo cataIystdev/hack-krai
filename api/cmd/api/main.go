@@ -127,6 +127,22 @@ func main() {
 		routeService = services.NewRouteService(locationRepo, tripRepo, routeRepo, vibeRepo, logger)
 	}
 
+	// Booking MVP (slots + bookings).
+	var bookingService *services.BookingService
+	if dbManager.Postgres != nil && locationRepo != nil {
+		bookingRepo := database.NewBookingRepository(dbManager.Postgres, logger)
+		bookingService = services.NewBookingService(bookingRepo, locationRepo, logger)
+	}
+
+	// Phase 12: weather + storytelling.
+	var weatherService *services.WeatherService
+	weatherService = services.NewWeatherService(logger)
+
+	var storytellingService *services.StorytellingService
+	if routeRepo != nil && locationRepo != nil && tripRepo != nil {
+		storytellingService = services.NewStorytellingService(routeRepo, locationRepo, tripRepo, storageService, weatherService, logger)
+	}
+
 	// Сервис поездок (TripService). Принимает vibeRepo для MergeGroupVibes.
 	var tripService *services.TripService
 	if tripRepo != nil && userRepo != nil {
@@ -215,7 +231,7 @@ func main() {
 	app.Use(middleware.NewCORS())
 
 	// --- 7. Регистрация маршрутов ---
-	handlers.SetupRoutes(app, dbManager, storageService, authService, jwtService, userRepo, locationService, tripService, vibeService, mapService, routeService, onboardingService, logger)
+	handlers.SetupRoutes(app, dbManager, storageService, authService, jwtService, userRepo, locationService, tripService, vibeService, mapService, routeService, onboardingService, bookingService, weatherService, storytellingService, logger)
 
 	// --- 7.5 Bootstrap демо-пользователей ---
 	// Идемпотентное создание предустановленных аккаунтов для тестирования и интеграции.

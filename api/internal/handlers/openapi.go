@@ -68,6 +68,14 @@ func OpenAPISpec(baseURL string) map[string]any {
 				"name":        "Маршруты",
 				"description": "Построение маршрутов между локациями с расчётом расстояния (Haversine) и времени в пути. Demo-режим без внешних API.",
 			},
+			{
+				"name":        "Погода",
+				"description": "Региональная погодная сводка для travel-aware UI и перестройки маршрутов.",
+			},
+			{
+				"name":        "Бронирования",
+				"description": "Booking MVP: дневные слоты доступности, создание брони, подтверждение/отклонение хостом, отмена туристом и списки броней.",
+			},
 		},
 		"paths": map[string]any{
 			"/": map[string]any{
@@ -608,6 +616,44 @@ func OpenAPISpec(baseURL string) map[string]any {
 					},
 				},
 			},
+			"/api/v1/locations/{id}/slots": map[string]any{
+				"get": map[string]any{
+					"tags":        []string{"Бронирования"},
+					"summary":     "Слоты доступности локации",
+					"description": "Возвращает дневные booking slots для указанной локации и месяца. Если слоты ещё не созданы, API лениво создаёт их из `location.capacity`.",
+					"operationId": "getLocationSlots",
+					"parameters": []map[string]any{
+						{"name": "id", "in": "path", "required": true, "schema": map[string]any{"type": "string", "format": "uuid"}, "description": "UUID локации."},
+						{"name": "month", "in": "query", "required": false, "schema": map[string]any{"type": "string", "example": "2026-04"}, "description": "Месяц в формате YYYY-MM. По умолчанию текущий."},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "Список слотов.",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{
+										"type": "object",
+										"properties": map[string]any{
+											"success": map[string]any{"type": "boolean"},
+											"data": map[string]any{
+												"type": "object",
+												"properties": map[string]any{
+													"location_id": map[string]any{"type": "string", "format": "uuid"},
+													"month":       map[string]any{"type": "string"},
+													"slots":       map[string]any{"type": "array", "items": map[string]any{"$ref": "#/components/schemas/BookingSlot"}},
+													"count":       map[string]any{"type": "integer"},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+						"400": map[string]any{"description": "Некорректный id или month."},
+						"404": map[string]any{"description": "Локация не найдена."},
+					},
+				},
+			},
 			"/api/v1/trips": map[string]any{
 				"get": map[string]any{
 					"tags":        []string{"Поездки"},
@@ -952,6 +998,17 @@ func OpenAPISpec(baseURL string) map[string]any {
 					},
 				},
 			},
+			"/api/v1/weather/region": map[string]any{
+				"get": map[string]any{
+					"tags":        []string{"Погода"},
+					"summary":     "Погода по ключевым точкам региона",
+					"description": "Возвращает погодную сводку по нескольким ключевым точкам Краснодарского края для карты и live-routing подсказок.",
+					"operationId": "getRegionWeather",
+					"responses": map[string]any{
+						"200": map[string]any{"description": "Погодная сводка.", "content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": "object", "properties": map[string]any{"success": map[string]any{"type": "boolean"}, "count": map[string]any{"type": "integer"}, "data": map[string]any{"type": "array", "items": map[string]any{"$ref": "#/components/schemas/WeatherPoint"}}}}}}},
+					},
+				},
+			},
 			"/api/v1/trips/{id}/build-route": map[string]any{
 				"post": map[string]any{
 					"tags":        []string{"Маршруты", "Поездки"},
@@ -993,6 +1050,167 @@ func OpenAPISpec(baseURL string) map[string]any {
 						},
 						"400": map[string]any{"description": "Невалидный запрос или недостаточно локаций."},
 						"401": map[string]any{"description": "Отсутствует или невалидный токен."},
+					},
+				},
+			},
+			"/api/v1/route/{id}/generate-stories": map[string]any{
+				"post": map[string]any{
+					"tags":        []string{"Маршруты"},
+					"summary":     "Сгенерировать stories для маршрута",
+					"description": "Генерирует storytelling assets для всех точек маршрута и сохраняет их в route_points.",
+					"operationId": "generateRouteStories",
+					"security":    []map[string]any{{"BearerAuth": []string{}}},
+					"parameters": []map[string]any{
+						{"name": "id", "in": "path", "required": true, "schema": map[string]any{"type": "string", "format": "uuid"}, "description": "UUID маршрута."},
+					},
+					"responses": map[string]any{
+						"202": map[string]any{"description": "Истории сгенерированы.", "content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": "object", "properties": map[string]any{"success": map[string]any{"type": "boolean"}, "data": map[string]any{"$ref": "#/components/schemas/GenerateStoriesResponse"}}}}}},
+						"401": map[string]any{"description": "Требуется JWT."},
+						"403": map[string]any{"description": "Нет доступа к маршруту."},
+						"404": map[string]any{"description": "Маршрут не найден."},
+					},
+				},
+			},
+			"/api/v1/route/{id}/stories": map[string]any{
+				"get": map[string]any{
+					"tags":        []string{"Маршруты"},
+					"summary":     "Истории маршрута",
+					"description": "Возвращает все storytelling assets для точек указанного маршрута.",
+					"operationId": "getRouteStories",
+					"security":    []map[string]any{{"BearerAuth": []string{}}},
+					"parameters": []map[string]any{
+						{"name": "id", "in": "path", "required": true, "schema": map[string]any{"type": "string", "format": "uuid"}, "description": "UUID маршрута."},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{"description": "Список историй маршрута.", "content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": "object", "properties": map[string]any{"success": map[string]any{"type": "boolean"}, "count": map[string]any{"type": "integer"}, "data": map[string]any{"type": "array", "items": map[string]any{"$ref": "#/components/schemas/RouteStory"}}}}}}},
+						"401": map[string]any{"description": "Требуется JWT."},
+						"403": map[string]any{"description": "Нет доступа к маршруту."},
+						"404": map[string]any{"description": "Маршрут не найден."},
+					},
+				},
+			},
+			"/api/v1/route/{id}/rebuild": map[string]any{
+				"post": map[string]any{
+					"tags":        []string{"Маршруты", "Погода"},
+					"summary":     "Перестроить маршрут по live-условиям",
+					"description": "Перестраивает существующий маршрут с учётом weather advisory и ручных override-параметров.",
+					"operationId": "rebuildRoute",
+					"security":    []map[string]any{{"BearerAuth": []string{}}},
+					"parameters": []map[string]any{
+						{"name": "id", "in": "path", "required": true, "schema": map[string]any{"type": "string", "format": "uuid"}, "description": "UUID маршрута."},
+					},
+					"requestBody": map[string]any{
+						"required": false,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"type": "object", "properties": map[string]any{
+									"weather_override": map[string]any{"type": "object", "description": "Ручной override условий для rebuild."},
+								}},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{"description": "Маршрут перестроен.", "content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": "object", "properties": map[string]any{"success": map[string]any{"type": "boolean"}, "data": map[string]any{"$ref": "#/components/schemas/RoutePreview"}}}}}},
+						"401": map[string]any{"description": "Требуется JWT."},
+						"403": map[string]any{"description": "Нет доступа к маршруту."},
+						"404": map[string]any{"description": "Маршрут не найден."},
+					},
+				},
+			},
+			"/api/v1/bookings": map[string]any{
+				"post": map[string]any{
+					"tags":        []string{"Бронирования"},
+					"summary":     "Создать бронь",
+					"description": "Создаёт бронь со статусом `pending`, атомарно резервируя capacity во всех дневных слотах диапазона `[date_from, date_to)`.",
+					"operationId": "createBooking",
+					"security":    []map[string]any{{"BearerAuth": []string{}}},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/CreateBookingRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"201": map[string]any{"description": "Бронь создана.", "content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": "object", "properties": map[string]any{"success": map[string]any{"type": "boolean"}, "data": map[string]any{"$ref": "#/components/schemas/BookingResponse"}}}}}},
+						"400": map[string]any{"description": "Некорректное тело запроса."},
+						"401": map[string]any{"description": "Требуется JWT."},
+						"404": map[string]any{"description": "Локация не найдена."},
+						"409": map[string]any{"description": "Выбранные даты недоступны."},
+					},
+				},
+			},
+			"/api/v1/bookings/my": map[string]any{
+				"get": map[string]any{
+					"tags":        []string{"Бронирования"},
+					"summary":     "Мои бронирования",
+					"description": "Возвращает все бронирования текущего пользователя.",
+					"operationId": "getMyBookings",
+					"security":    []map[string]any{{"BearerAuth": []string{}}},
+					"responses": map[string]any{
+						"200": map[string]any{"description": "Список броней пользователя.", "content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": "object", "properties": map[string]any{"success": map[string]any{"type": "boolean"}, "count": map[string]any{"type": "integer"}, "data": map[string]any{"type": "array", "items": map[string]any{"$ref": "#/components/schemas/BookingResponse"}}}}}}},
+						"401": map[string]any{"description": "Требуется JWT."},
+					},
+				},
+			},
+			"/api/v1/bookings/{id}/confirm": map[string]any{
+				"post": map[string]any{
+					"tags":        []string{"Бронирования"},
+					"summary":     "Подтвердить или отклонить бронь",
+					"description": "Доступно только владельцу локации или `b2g_admin`. `action=confirm` подтверждает бронь, `action=reject` отклоняет и возвращает capacity в слоты.",
+					"operationId": "confirmOrRejectBooking",
+					"security":    []map[string]any{{"BearerAuth": []string{}}},
+					"parameters": []map[string]any{
+						{"name": "id", "in": "path", "required": true, "schema": map[string]any{"type": "string", "format": "uuid"}, "description": "UUID брони."},
+					},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"application/json": map[string]any{
+								"schema": map[string]any{"$ref": "#/components/schemas/BookingActionRequest"},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{"description": "Статус брони обновлён.", "content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": "object", "properties": map[string]any{"success": map[string]any{"type": "boolean"}, "data": map[string]any{"$ref": "#/components/schemas/BookingResponse"}}}}}},
+						"401": map[string]any{"description": "Требуется JWT."},
+						"403": map[string]any{"description": "Нет прав на бронь."},
+						"404": map[string]any{"description": "Бронь не найдена."},
+						"409": map[string]any{"description": "Статус брони уже не допускает действие."},
+					},
+				},
+			},
+			"/api/v1/bookings/{id}/cancel": map[string]any{
+				"post": map[string]any{
+					"tags":        []string{"Бронирования"},
+					"summary":     "Отменить бронь",
+					"description": "Турист отменяет свою бронь. Capacity возвращается во все слоты диапазона.",
+					"operationId": "cancelBooking",
+					"security":    []map[string]any{{"BearerAuth": []string{}}},
+					"parameters": []map[string]any{
+						{"name": "id", "in": "path", "required": true, "schema": map[string]any{"type": "string", "format": "uuid"}, "description": "UUID брони."},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{"description": "Бронь отменена.", "content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": "object", "properties": map[string]any{"success": map[string]any{"type": "boolean"}, "data": map[string]any{"$ref": "#/components/schemas/BookingResponse"}}}}}},
+						"401": map[string]any{"description": "Требуется JWT."},
+						"403": map[string]any{"description": "Нет прав на бронь."},
+						"404": map[string]any{"description": "Бронь не найдена."},
+						"409": map[string]any{"description": "Статус брони не допускает отмену."},
+					},
+				},
+			},
+			"/api/v1/host/bookings": map[string]any{
+				"get": map[string]any{
+					"tags":        []string{"Бронирования"},
+					"summary":     "Бронирования хоста",
+					"description": "Возвращает все брони по локациям текущего хоста.",
+					"operationId": "getHostBookings",
+					"security":    []map[string]any{{"BearerAuth": []string{}}},
+					"responses": map[string]any{
+						"200": map[string]any{"description": "Список броней хоста.", "content": map[string]any{"application/json": map[string]any{"schema": map[string]any{"type": "object", "properties": map[string]any{"success": map[string]any{"type": "boolean"}, "count": map[string]any{"type": "integer"}, "data": map[string]any{"type": "array", "items": map[string]any{"$ref": "#/components/schemas/BookingResponse"}}}}}}},
+						"401": map[string]any{"description": "Требуется JWT."},
+						"403": map[string]any{"description": "Требуется роль host или b2g_admin."},
 					},
 				},
 			},
@@ -1563,6 +1781,115 @@ func OpenAPISpec(baseURL string) map[string]any {
 					},
 					"required": []string{"invite_token", "display_name"},
 				},
+				"BookingSlot": map[string]any{
+					"type":        "object",
+					"description": "Дневной слот доступности локации.",
+					"properties": map[string]any{
+						"id":                 map[string]any{"type": "string", "format": "uuid"},
+						"location_id":        map[string]any{"type": "string", "format": "uuid"},
+						"slot_date":          map[string]any{"type": "string", "format": "date"},
+						"total_capacity":     map[string]any{"type": "integer"},
+						"available_capacity": map[string]any{"type": "integer"},
+						"is_closed":          map[string]any{"type": "boolean"},
+						"created_at":         map[string]any{"type": "string", "format": "date-time"},
+						"updated_at":         map[string]any{"type": "string", "format": "date-time"},
+					},
+				},
+				"Booking": map[string]any{
+					"type":        "object",
+					"description": "Базовая запись бронирования.",
+					"properties": map[string]any{
+						"id":            map[string]any{"type": "string", "format": "uuid"},
+						"location_id":   map[string]any{"type": "string", "format": "uuid"},
+						"user_id":       map[string]any{"type": "string", "format": "uuid"},
+						"date_from":     map[string]any{"type": "string", "format": "date"},
+						"date_to":       map[string]any{"type": "string", "format": "date"},
+						"guests_count":  map[string]any{"type": "integer"},
+						"total_price":   map[string]any{"type": "integer"},
+						"status":        map[string]any{"type": "string", "enum": []string{"pending", "confirmed", "rejected", "cancelled"}},
+						"contact_name":  map[string]any{"type": "string"},
+						"contact_phone": map[string]any{"type": "string"},
+						"comment":       map[string]any{"type": "string"},
+						"host_comment":  map[string]any{"type": "string"},
+						"cancelled_by":  map[string]any{"type": "string", "nullable": true},
+						"confirmed_at":  map[string]any{"type": "string", "format": "date-time", "nullable": true},
+						"cancelled_at":  map[string]any{"type": "string", "format": "date-time", "nullable": true},
+						"created_at":    map[string]any{"type": "string", "format": "date-time"},
+						"updated_at":    map[string]any{"type": "string", "format": "date-time"},
+					},
+				},
+				"BookingResponse": map[string]any{
+					"type":        "object",
+					"description": "Бронирование с данными локации для экранов пользователя и хоста.",
+					"allOf": []map[string]any{
+						{"$ref": "#/components/schemas/Booking"},
+						{"type": "object", "properties": map[string]any{
+							"location_name":              map[string]any{"type": "string"},
+							"location_slug":              map[string]any{"type": "string"},
+							"location_preview_image_url": map[string]any{"type": "string"},
+						}},
+					},
+				},
+				"CreateBookingRequest": map[string]any{
+					"type":        "object",
+					"description": "Создание брони на диапазон ночей `[date_from, date_to)`.",
+					"properties": map[string]any{
+						"location_id":   map[string]any{"type": "string", "format": "uuid"},
+						"date_from":     map[string]any{"type": "string", "format": "date", "example": "2026-04-10"},
+						"date_to":       map[string]any{"type": "string", "format": "date", "example": "2026-04-13"},
+						"guests_count":  map[string]any{"type": "integer", "example": 2},
+						"contact_name":  map[string]any{"type": "string", "example": "Иван Петров"},
+						"contact_phone": map[string]any{"type": "string", "example": "+79991234567"},
+						"comment":       map[string]any{"type": "string", "example": "Приедем поздно вечером"},
+					},
+					"required": []string{"location_id", "date_from", "date_to", "guests_count", "contact_name", "contact_phone"},
+				},
+				"BookingActionRequest": map[string]any{
+					"type":        "object",
+					"description": "Действие хоста над бронью.",
+					"properties": map[string]any{
+						"action":       map[string]any{"type": "string", "enum": []string{"confirm", "reject"}},
+						"host_comment": map[string]any{"type": "string"},
+					},
+					"required": []string{"action"},
+				},
+				"WeatherPoint": map[string]any{
+					"type":        "object",
+					"description": "Погодная точка региона.",
+					"properties": map[string]any{
+						"point":         map[string]any{"type": "string"},
+						"lat":           map[string]any{"type": "number"},
+						"lon":           map[string]any{"type": "number"},
+						"temp":          map[string]any{"type": "integer"},
+						"condition":     map[string]any{"type": "string", "example": "rain"},
+						"wind_speed":    map[string]any{"type": "integer"},
+						"updated_at":    map[string]any{"type": "string", "format": "date-time"},
+						"severity":      map[string]any{"type": "string"},
+						"needs_rebuild": map[string]any{"type": "boolean"},
+					},
+				},
+				"RouteStory": map[string]any{
+					"type":        "object",
+					"description": "Storytelling asset для точки маршрута.",
+					"properties": map[string]any{
+						"point_id":       map[string]any{"type": "string", "format": "uuid"},
+						"location_id":    map[string]any{"type": "string", "format": "uuid"},
+						"location_name":  map[string]any{"type": "string"},
+						"audio_url":      map[string]any{"type": "string"},
+						"story_text":     map[string]any{"type": "string"},
+						"duration_sec":   map[string]any{"type": "integer"},
+						"weather_hint":   map[string]any{"type": "string"},
+					},
+				},
+				"GenerateStoriesResponse": map[string]any{
+					"type":        "object",
+					"description": "Результат генерации историй маршрута.",
+					"properties": map[string]any{
+						"route_id":     map[string]any{"type": "string", "format": "uuid"},
+						"points_count": map[string]any{"type": "integer"},
+						"generated":    map[string]any{"type": "integer"},
+					},
+				},
 				"SwipeRequest": map[string]any{
 					"type":        "object",
 					"description": "Запрос свайпа сцены.",
@@ -1705,6 +2032,10 @@ func OpenAPISpec(baseURL string) map[string]any {
 						"time_slot":              map[string]any{"type": "string", "enum": []string{"morning", "afternoon", "evening"}, "description": "Тайм-слот."},
 						"target_audience":        map[string]any{"type": "string", "enum": []string{"all", "adults", "children"}, "description": "Целевая аудитория."},
 						"vibe_score":             map[string]any{"type": "number", "format": "float", "description": "Vibe-score (0.0-1.0)."},
+						"audio_story_url":        map[string]any{"type": "string", "description": "URL story asset для точки."},
+						"story_text":             map[string]any{"type": "string", "description": "Текст истории точки."},
+						"weather_condition":      map[string]any{"type": "string", "description": "Погодное состояние для точки."},
+						"weather_temp_c":         map[string]any{"type": "integer", "description": "Температура в градусах Цельсия."},
 					},
 				},
 			},

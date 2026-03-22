@@ -78,13 +78,15 @@ func (r *RouteRepository) Create(ctx context.Context, route *models.Route, point
 		pointQuery := `
 			INSERT INTO route_points (route_id, location_id, position, day_number,
 				time_slot, target_audience, stay_duration_min,
-				distance_from_prev_km, duration_from_prev_min)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+				distance_from_prev_km, duration_from_prev_min, audio_story_url,
+				story_text, weather_condition, weather_temp_c)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		`
 		_, err = tx.Exec(ctx, pointQuery,
 			created.ID, point.LocationID, point.Position, point.DayNumber,
 			point.TimeSlot, point.TargetAudience, point.StayDurationMin,
 			point.DistanceFromPrevKm, point.DurationFromPrevMin,
+			point.AudioStoryURL, point.StoryText, point.WeatherCondition, point.WeatherTempC,
 		)
 		if err != nil {
 			r.logger.Error("ошибка вставки точки маршрута",
@@ -139,7 +141,8 @@ func (r *RouteRepository) FindByID(ctx context.Context, id uuid.UUID) (*models.R
 func (r *RouteRepository) FindPointsByRouteID(ctx context.Context, routeID uuid.UUID) ([]models.RoutePointDB, error) {
 	query := `
 		SELECT id, route_id, location_id, position, day_number, time_slot,
-			target_audience, stay_duration_min, distance_from_prev_km, duration_from_prev_min
+			target_audience, stay_duration_min, distance_from_prev_km, duration_from_prev_min,
+			COALESCE(audio_story_url, ''), COALESCE(story_text, ''), COALESCE(weather_condition, ''), weather_temp_c
 		FROM route_points
 		WHERE route_id = $1
 		ORDER BY position ASC
@@ -158,6 +161,7 @@ func (r *RouteRepository) FindPointsByRouteID(ctx context.Context, routeID uuid.
 			&p.ID, &p.RouteID, &p.LocationID, &p.Position,
 			&p.DayNumber, &p.TimeSlot, &p.TargetAudience,
 			&p.StayDurationMin, &p.DistanceFromPrevKm, &p.DurationFromPrevMin,
+			&p.AudioStoryURL, &p.StoryText, &p.WeatherCondition, &p.WeatherTempC,
 		); err != nil {
 			return nil, fmt.Errorf("ошибка сканирования точки маршрута: %w", err)
 		}
@@ -169,6 +173,89 @@ func (r *RouteRepository) FindPointsByRouteID(ctx context.Context, routeID uuid.
 	}
 
 	return points, nil
+}
+
+// ReplacePoints полностью заменяет точки маршрута новым набором.
+func (r *RouteRepository) ReplacePoints(ctx context.Context, routeID uuid.UUID, points []models.RoutePointDB) error {
+	tx, err := r.pg.Pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("ошибка начала транзакции замены точек маршрута: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, `DELETE FROM route_points WHERE route_id = $1`, routeID); err != nil {
+		return fmt.Errorf("ошибка удаления старых точек маршрута: %w", err)
+	}
+
+	for _, point := range points {
+		_, err := tx.Exec(ctx, `
+			INSERT INTO route_points (
+				route_id, location_id, position, day_number, time_slot, target_audience,
+				stay_duration_min, distance_from_prev_km, duration_from_prev_min,
+				audio_story_url, story_text, weather_condition, weather_temp_c
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		`,
+			routeID, point.LocationID, point.Position, point.DayNumber, point.TimeSlot,
+			point.TargetAudience, point.StayDurationMin, point.DistanceFromPrevKm,
+			point.DurationFromPrevMin, point.AudioStoryURL, point.StoryText,
+			point.WeatherCondition, point.WeatherTempC,
+		)
+		if err != nil {
+			return fmt.Errorf("ошибка вставки новой точки маршрута: %w", err)
+		}
+	}
+
+	if _, err := tx.Exec(ctx, `UPDATE routes SET points_count = $1 WHERE id = $2`, len(points), routeID); err != nil {
+		return fmt.Errorf("ошибка обновления points_count: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("ошибка commit замены route_points: %w", err)
+	}
+
+	return nil
+}
+
+// UpdatePointStory обновляет storytelling-артефакт конкретной точки маршрута.
+func (r *RouteRepository) UpdatePointStory(ctx context.Context, routeID, pointID uuid.UUID, audioURL, storyText string) error {
+	tag, err := r.pg.Pool.Exec(ctx, `
+		UPDATE route_points
+		SET audio_story_url = $1, story_text = $2
+		WHERE route_id = $3 AND id = $4
+	`, audioURL, storyText, routeID, pointID)
+	if err != nil {
+		return fmt.Errorf("ошибка обновления story asset: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrRouteNotFound
+	}
+	return nil
+}
+
+// UpdateRouteSummaryAndMetrics обновляет итоговые метрики маршрута после rebuild.
+func (r *RouteRepository) UpdateRouteSummaryAndMetrics(
+	ctx context.Context,
+	routeID uuid.UUID,
+	totalDistance float64,
+	totalDuration int,
+	estimatedCost int,
+	summary string,
+) error {
+	tag, err := r.pg.Pool.Exec(ctx, `
+		UPDATE routes
+		SET total_distance_km = $1,
+		    estimated_duration_min = $2,
+		    estimated_cost_rub = $3,
+		    summary = $4
+		WHERE id = $5
+	`, totalDistance, totalDuration, estimatedCost, summary, routeID)
+	if err != nil {
+		return fmt.Errorf("ошибка обновления route summary: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrRouteNotFound
+	}
+	return nil
 }
 
 // FindByTripID возвращает все маршруты поездки, отсортированные по дате создания.

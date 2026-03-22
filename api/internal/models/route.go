@@ -168,6 +168,18 @@ type RoutePoint struct {
 
 	// VibeScore — оценка соответствия vibe-вектору группы (0.0 - 1.0).
 	VibeScore float32 `json:"vibe_score,omitempty"`
+
+	// AudioStoryURL — URL сгенерированной аудио-истории для точки.
+	AudioStoryURL string `json:"audio_story_url,omitempty"`
+
+	// StoryText — текстовая версия истории.
+	StoryText string `json:"story_text,omitempty"`
+
+	// WeatherCondition — погодное состояние для точки маршрута.
+	WeatherCondition string `json:"weather_condition,omitempty"`
+
+	// WeatherTempC — температура в градусах Цельсия.
+	WeatherTempC *int `json:"weather_temp_c,omitempty"`
 }
 
 // RoutePreview — полный ответ построенного маршрута.
@@ -283,4 +295,16 @@ type RoutePointDB struct {
 
 	// DurationFromPrevMin — время в пути от предыдущей точки в минутах.
 	DurationFromPrevMin int `json:"duration_from_prev_min" db:"duration_from_prev_min"`
+
+	// AudioStoryURL — ссылка на аудио-историю.
+	AudioStoryURL string `json:"audio_story_url" db:"audio_story_url"`
+
+	// StoryText — текст истории.
+	StoryText string `json:"story_text" db:"story_text"`
+
+	// WeatherCondition — погодное состояние.
+	WeatherCondition string `json:"weather_condition" db:"weather_condition"`
+
+	// WeatherTempC — температура.
+	WeatherTempC *int `json:"weather_temp_c,omitempty" db:"weather_temp_c"`
 }
