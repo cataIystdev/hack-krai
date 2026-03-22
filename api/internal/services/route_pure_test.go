@@ -23,9 +23,9 @@ func TestHaversineDistance_SamePoint(t *testing.T) {
 }
 
 func TestHaversineDistance_SochiToKrasnodar(t *testing.T) {
-	// Сочи — Краснодар ~285 км напрямую
+	// Сочи — Краснодар ~172 км по прямой (по воздуху, не по дороге)
 	d := haversineDistance(43.5855, 39.7231, 45.0355, 38.9753)
-	assert.InDelta(t, 285.0, d, 20.0, "Сочи-Краснодар ~285 км")
+	assert.InDelta(t, 172.0, d, 15.0, "Сочи-Краснодар ~172 км по прямой")
 }
 
 func TestHaversineDistance_Symmetry(t *testing.T) {
