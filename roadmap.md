@@ -1635,3 +1635,43 @@ Frontend can now extend from promo/demo to true app flow.
 ### Полное покрытие GDD
 
 - все основные туристические, хостовые, live-, аналитические и B2G-системы из GDD реализованы на реальной инфраструктуре и стабильных контрактах.
+
+---
+
+## ElevenLabs TTS — статус интеграции
+
+### Выполнено (test-lowcoware)
+
+- `ELEVENLABS_API_KEY` добавлен на сервер в `/opt/deepkrai/configs/.env.test-lowcoware` ✅
+- `ELEVENLABS_VOICE_ID` добавлен (голос `pqHfZKP75CvOlQylNhV4`) ✅
+- `internal/ai/elevenlabs.go` — клиент TTS (HTTP → ElevenLabs API → mp3 bytes) ✅
+- `internal/services/storytelling.go` — подключён к реальному ElevenLabs вместо `.txt`-заглушки ✅
+- `internal/config/config.go` — поля `ElevenLabsAPIKey`, `ElevenLabsVoiceID` в `AIConfig` ✅
+
+### TODO — dev ветка
+
+> ⚠️ **При деплое в `dev`**: добавить переменные на сервер вручную:
+>
+> ```bash
+> echo "ELEVENLABS_API_KEY=sk_332b2b594eb94d872caa5af5794528398d9ee55fe935c595" >> /opt/deepkrai/configs/.env.dev
+> echo "ELEVENLABS_VOICE_ID=pqHfZKP75CvOlQylNhV4" >> /opt/deepkrai/configs/.env.dev
+> ```
+>
+> Без этого storytelling-сервис на dev будет молча пропускать генерацию аудио
+> (защита через `if cfg.ElevenLabsAPIKey == ""` → fallback на текст).
+
+### Архитектура TTS pipeline
+
+```
+POST /api/v1/route/{id}/generate-stories
+  → StorytellingService.GenerateStories()
+    → buildStoryText(loc, point)          → текст истории
+    → ElevenLabsClient.TextToSpeech(text) → []byte (mp3)
+    → StorageService.Upload("stories/.../{point_id}.mp3", mp3)
+    → routeRepo.UpdatePointStory(audioURL, storyText)
+  ← { route_id, points_count, generated }
+
+GET /api/v1/route/{id}/stories
+  ← [{ audio_url: "https://minio.../stories/....mp3", story_text, duration_sec }]
+```
+

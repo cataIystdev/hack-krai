@@ -138,9 +138,22 @@ func main() {
 	var weatherService *services.WeatherService
 	weatherService = services.NewWeatherService(logger)
 
+	// ElevenLabs TTS-клиент (nil если ключ не задан — storytelling упадёт в fallback).
+	var elevenLabsClient *ai.ElevenLabsClient
+	if cfg.AI.ElevenLabsAPIKey != "" {
+		voiceID := cfg.AI.ElevenLabsVoiceID
+		if voiceID == "" {
+			voiceID = "pqHfZKP75CvOlQylNhV4" // Bill — мужской русский голос
+		}
+		elevenLabsClient = ai.NewElevenLabsClient(cfg.AI.ElevenLabsAPIKey, voiceID)
+		logger.Info("ElevenLabs TTS инициализирован", zap.String("voice_id", voiceID))
+	} else {
+		logger.Warn("ELEVENLABS_API_KEY не задан, storytelling будет сохранять текст вместо mp3")
+	}
+
 	var storytellingService *services.StorytellingService
 	if routeRepo != nil && locationRepo != nil && tripRepo != nil {
-		storytellingService = services.NewStorytellingService(routeRepo, locationRepo, tripRepo, storageService, weatherService, logger)
+		storytellingService = services.NewStorytellingService(routeRepo, locationRepo, tripRepo, storageService, weatherService, elevenLabsClient, logger)
 	}
 
 	// Сервис поездок (TripService). Принимает vibeRepo для MergeGroupVibes.

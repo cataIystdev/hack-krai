@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"math"
 	"testing"
 	"time"
@@ -359,7 +360,7 @@ func TestGetTravelAdvisory_ReturnsNearest(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
 	svc := NewWeatherService(logger)
 	// Краснодар coords: 45.0355, 38.9753 — должен вернуть ближайшую точку
-	advisory, err := svc.GetTravelAdvisory(nil, 45.0, 38.9)
+	advisory, err := svc.GetTravelAdvisory(context.TODO(), 45.0, 38.9)
 	require.NoError(t, err)
 	require.NotNil(t, advisory)
 	assert.Equal(t, "Краснодар", advisory.Point)
@@ -369,7 +370,7 @@ func TestGetTravelAdvisory_SochiNearest(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
 	svc := NewWeatherService(logger)
 	// Сочи coords: 43.5855, 39.7231
-	advisory, err := svc.GetTravelAdvisory(nil, 43.5, 39.8)
+	advisory, err := svc.GetTravelAdvisory(context.TODO(), 43.5, 39.8)
 	require.NoError(t, err)
 	assert.Equal(t, "Сочи", advisory.Point)
 }
@@ -377,7 +378,7 @@ func TestGetTravelAdvisory_SochiNearest(t *testing.T) {
 func TestGetTravelAdvisory_AlwaysReturnsPoint(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
 	svc := NewWeatherService(logger)
-	advisory, err := svc.GetTravelAdvisory(nil, 0.0, 0.0)
+	advisory, err := svc.GetTravelAdvisory(context.TODO(), 0.0, 0.0)
 	require.NoError(t, err)
 	assert.NotNil(t, advisory)
 	assert.NotEmpty(t, advisory.Point)
@@ -386,7 +387,7 @@ func TestGetTravelAdvisory_AlwaysReturnsPoint(t *testing.T) {
 func TestGetRegionWeather_ReturnsAllPoints(t *testing.T) {
 	logger, _ := zap.NewDevelopment()
 	svc := NewWeatherService(logger)
-	points, err := svc.GetRegionWeather(nil)
+	points, err := svc.GetRegionWeather(context.TODO())
 	require.NoError(t, err)
 	assert.Len(t, points, 5)
 	for _, p := range points {

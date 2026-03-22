@@ -212,7 +212,7 @@ type JWTConfig struct {
 	Issuer string `mapstructure:"issuer"`
 }
 
-// AIConfig — параметры подключения к AI API (OnlySQ, Vosk).
+// AIConfig — параметры подключения к AI API (OnlySQ, Vosk, ElevenLabs).
 type AIConfig struct {
 	// BaseURL — базовый URL AI API (по умолчанию https://api.onlysq.ru/ai/openai/).
 	BaseURL string `mapstructure:"base_url"`
@@ -237,6 +237,14 @@ type AIConfig struct {
 
 	// VoskPort — порт Vosk-server (по умолчанию 2700).
 	VoskPort int `mapstructure:"vosk_port"`
+
+	// ElevenLabsAPIKey — ключ API ElevenLabs для синтеза речи (TTS).
+	// Если пуст — storytelling-сервис сохраняет текстовую заглушку вместо mp3.
+	ElevenLabsAPIKey string `mapstructure:"elevenlabs_api_key"`
+
+	// ElevenLabsVoiceID — идентификатор голоса в библиотеке ElevenLabs.
+	// По умолчанию pqHfZKP75CvOlQylNhV4 (мужской, русский).
+	ElevenLabsVoiceID string `mapstructure:"elevenlabs_voice_id"`
 
 	// DemoLatencyMs — искусственная задержка в миллисекундах для mock-режима.
 	// Создаёт естественную UX-анимацию "ИИ думает" при демонстрации.

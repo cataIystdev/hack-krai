@@ -9,18 +9,20 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"kudytudy-api/internal/ai"
 	"kudytudy-api/internal/database"
 	"kudytudy-api/internal/models"
 )
 
 // StorytellingService — генерация route assets для историй точек маршрута.
 type StorytellingService struct {
-	routeRepo     *database.RouteRepository
-	locationRepo  *database.LocationRepository
-	tripRepo      *database.TripRepository
-	storage       *StorageService
-	weather       *WeatherService
-	logger        *zap.Logger
+	routeRepo    *database.RouteRepository
+	locationRepo *database.LocationRepository
+	tripRepo     *database.TripRepository
+	storage      *StorageService
+	weather      *WeatherService
+	tts          *ai.ElevenLabsClient // nil если ключ не задан
+	logger       *zap.Logger
 }
 
 func NewStorytellingService(
@@ -29,6 +31,7 @@ func NewStorytellingService(
 	tripRepo *database.TripRepository,
 	storage *StorageService,
 	weather *WeatherService,
+	tts *ai.ElevenLabsClient,
 	logger *zap.Logger,
 ) *StorytellingService {
 	return &StorytellingService{
@@ -37,6 +40,7 @@ func NewStorytellingService(
 		tripRepo:     tripRepo,
 		storage:      storage,
 		weather:      weather,
+		tts:          tts,
 		logger:       logger.Named("storytelling_service"),
 	}
 }
@@ -53,13 +57,37 @@ func (s *StorytellingService) GenerateStories(ctx context.Context, routeID, user
 		if !ok {
 			continue
 		}
+
 		storyText := s.buildStoryText(loc, point)
 		audioURL := ""
-		if s.storage != nil {
+
+		if s.tts != nil && s.storage != nil {
+			// Реальный TTS: текст → mp3 через ElevenLabs
+			mp3, ttsErr := s.tts.TextToSpeech(ctx, storyText)
+			if ttsErr != nil {
+				s.logger.Warn("ElevenLabs TTS error, falling back to text",
+					zap.String("point_id", point.ID.String()),
+					zap.Error(ttsErr),
+				)
+			} else {
+				objectName := fmt.Sprintf("stories/%s/%s.mp3", routeID.String(), point.ID.String())
+				result, upErr := s.storage.Upload(ctx, objectName, bytes.NewReader(mp3), int64(len(mp3)), "audio/mpeg")
+				if upErr != nil {
+					s.logger.Warn("не удалось загрузить mp3 в MinIO", zap.Error(upErr))
+				} else if result != nil {
+					audioURL = result.URL
+					s.logger.Info("story mp3 uploaded",
+						zap.String("point_id", point.ID.String()),
+						zap.String("url", audioURL),
+					)
+				}
+			}
+		} else if s.storage != nil {
+			// Fallback: нет ключа ElevenLabs — сохраняем текст как .txt
 			objectName := fmt.Sprintf("stories/%s/%s.txt", routeID.String(), point.ID.String())
 			result, upErr := s.storage.Upload(ctx, objectName, bytes.NewReader([]byte(storyText)), int64(len(storyText)), "text/plain")
 			if upErr != nil {
-				s.logger.Warn("не удалось загрузить story asset", zap.Error(upErr))
+				s.logger.Warn("не удалось загрузить story text", zap.Error(upErr))
 			} else if result != nil {
 				audioURL = result.URL
 			}
@@ -87,8 +115,8 @@ func (s *StorytellingService) GetStories(ctx context.Context, routeID, userID uu
 	stories := make([]models.RouteStory, 0, len(points))
 	for _, point := range points {
 		loc := locations[point.LocationID]
-		duration := 60
-		if point.StayDurationMin > 0 {
+		duration := ai.EstimateDurationSec(point.StoryText)
+		if point.StayDurationMin > 0 && duration < point.StayDurationMin {
 			duration = point.StayDurationMin
 		}
 		stories = append(stories, models.RouteStory{

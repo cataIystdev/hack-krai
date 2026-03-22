@@ -10,8 +10,9 @@ import (
 )
 
 // buildStoryText — чистая функция, тестируем напрямую через пустой receiver.
+// tts=nil → fallback-режим без ElevenLabs (только текст).
 func newTestStorytellingService() *StorytellingService {
-	return &StorytellingService{}
+	return &StorytellingService{tts: nil}
 }
 
 func TestBuildStoryText_FullLocation(t *testing.T) {
