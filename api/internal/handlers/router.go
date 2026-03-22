@@ -32,6 +32,7 @@ func SetupRoutes(
 	bookingService *services.BookingService,
 	weatherService *services.WeatherService,
 	storytellingService *services.StorytellingService,
+	reviewService *services.ReviewService,
 	logger *zap.Logger,
 ) {
 	// Корневой маршрут — базовая информация о сервере.
@@ -82,6 +83,12 @@ func SetupRoutes(
 		v1.Get("/locations/:id/slots", bookingHandler.ListLocationSlots)
 	}
 
+	var reviewHandler *ReviewHandler
+	if reviewService != nil {
+		reviewHandler = NewReviewHandler(reviewService, logger)
+		v1.Get("/locations/:id/reviews", reviewHandler.ListLocationReviews)
+	}
+
 	// Карта — публичный эндпоинт (точки для маркеров).
 	if mapService != nil {
 		mapHandler := NewMapHandler(mapService, logger)
@@ -92,6 +99,9 @@ func SetupRoutes(
 		weatherHandler := NewWeatherHandler(weatherService, logger)
 		v1.Get("/weather/region", weatherHandler.GetRegion)
 	}
+
+	// Поездки — публичный эндпоинт с необязательной JWT-аутентификацией.
+	// OptionalJWTAuth парсит JWT если передан, но не блокирует запрос при отсутствии.
 
 	// Поездки — публичный эндпоинт с необязательной JWT-аутентификацией.
 	// OptionalJWTAuth парсит JWT если передан, но не блокирует запрос при отсутствии.
@@ -111,6 +121,10 @@ func SetupRoutes(
 	profile := v1.Group("/profile", jwtMiddleware)
 	profile.Get("/me", profileHandler.GetMe)
 	profile.Put("/me", profileHandler.UpdateMe)
+
+	if reviewHandler != nil {
+		profile.Get("/me/reviews", reviewHandler.ListMyReviews)
+	}
 
 	// Профилирование — голосовой ввод, свайп сцен, финализация.
 	vibeHandler := NewVibeHandler(vibeService, logger)
@@ -139,6 +153,10 @@ func SetupRoutes(
 		hostBookings := v1.Group("/host", jwtMiddleware, locationsRBAC)
 		hostBookings.Get("/bookings", bookingHandler.ListHostBookings)
 		bookingsProtected.Post("/:id/confirm", locationsRBAC, bookingHandler.ConfirmOrReject)
+	}
+
+	if reviewHandler != nil {
+		v1.Post("/reviews", jwtMiddleware, reviewHandler.Create)
 	}
 
 	// Поездки — защищённые эндпоинты (создание, детали, invite, участники, маршрут).

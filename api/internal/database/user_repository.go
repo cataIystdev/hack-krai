@@ -194,6 +194,47 @@ func (r *UserRepository) UpdateProfile(ctx context.Context, id, displayName stri
 	return &user, nil
 }
 
+// UpdateKarma изменяет карму пользователя на указанную дельту.
+// Возвращает обновлённую структуру User.
+func (r *UserRepository) UpdateKarma(ctx context.Context, id string, delta int) (*models.User, error) {
+	query := `
+		UPDATE users SET karma = karma + $1, updated_at = NOW()
+		WHERE id = $2
+		RETURNING id, email, password_hash, role, display_name, karma, vibe_vector_id, created_at, updated_at
+	`
+
+	var user models.User
+	err := r.pg.Pool.QueryRow(ctx, query, delta, id).Scan(
+		&user.ID,
+		&user.Email,
+		&user.PasswordHash,
+		&user.Role,
+		&user.DisplayName,
+		&user.Karma,
+		&user.VibeVectorID,
+		&user.CreatedAt,
+		&user.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrUserNotFound
+		}
+		r.logger.Error("ошибка обновления кармы",
+			zap.String("id", id),
+			zap.Int("delta", delta),
+			zap.Error(err),
+		)
+		return nil, fmt.Errorf("ошибка обновления кармы: %w", err)
+	}
+
+	r.logger.Info("карма обновлена",
+		zap.String("user_id", user.ID.String()),
+		zap.Int("new_karma", user.Karma),
+	)
+
+	return &user, nil
+}
+
 // contains — вспомогательная функция для проверки наличия подстроки.
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && searchString(s, substr)

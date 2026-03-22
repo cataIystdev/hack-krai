@@ -213,6 +213,15 @@ func main() {
 		logger.Info("сервис онбординга инициализирован")
 	}
 
+	// --- 4.8 Сервис отзывов ---
+	var reviewRepo *database.ReviewRepository
+	var reviewService *services.ReviewService
+	if dbManager.Postgres != nil {
+		reviewRepo = database.NewReviewRepository(dbManager.Postgres, logger)
+		reviewService = services.NewReviewService(reviewRepo, userRepo, logger)
+		logger.Info("сервис отзывов инициализирован")
+	}
+
 	// --- 5. Создание HTTP-сервера Fiber ---
 	app := fiber.New(fiber.Config{
 		// ServerHeader — заголовок Server в HTTP-ответах.
@@ -244,7 +253,7 @@ func main() {
 	app.Use(middleware.NewCORS())
 
 	// --- 7. Регистрация маршрутов ---
-	handlers.SetupRoutes(app, dbManager, storageService, authService, jwtService, userRepo, locationService, tripService, vibeService, mapService, routeService, onboardingService, bookingService, weatherService, storytellingService, logger)
+	handlers.SetupRoutes(app, dbManager, storageService, authService, jwtService, userRepo, locationService, tripService, vibeService, mapService, routeService, onboardingService, bookingService, weatherService, storytellingService, reviewService, logger)
 
 	// --- 7.5 Bootstrap демо-пользователей ---
 	// Идемпотентное создание предустановленных аккаунтов для тестирования и интеграции.
