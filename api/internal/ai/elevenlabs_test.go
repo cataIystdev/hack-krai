@@ -37,7 +37,7 @@ func TestEstimateDurationSec_LongText(t *testing.T) {
 	// Длинный текст → заметно больше 5 секунд
 	long := make([]byte, 3000)
 	for i := range long {
-		long[i] = 'а'
+		long[i] = 'a' // ASCII, не кириллица — byte в Go однобайтовый
 	}
 	dur := EstimateDurationSec(string(long))
 	// 3000 / 5 = 600 слов; 600/150*60 = 240 сек
