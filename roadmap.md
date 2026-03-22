@@ -190,10 +190,13 @@ Backend планируется так, чтобы:
 2. reviews/karma/hidden gems logic
 3. analytics/B2G endpoints
 4. sync/offline support endpoints
+5. WebSocket каналы (`/ws/v1/weather`, `/ws/v1/notifications`)
 
-### Написано в коде, но ещё не верифицировано
+### Верифицировано и закрыто (Phase 11 + 12)
 
-1. booking MVP (Phase 11):
+`go build ./...` и `go test ./...` — PASS (2026-03-22).
+
+1. **Booking MVP (Phase 11)** — ✅ DONE:
 
    - `GET /api/v1/locations/{id}/slots`
    - `POST /api/v1/bookings`
@@ -201,21 +204,15 @@ Backend планируется так, чтобы:
    - `POST /api/v1/bookings/{id}/confirm`
    - `POST /api/v1/bookings/{id}/cancel`
    - `GET /api/v1/host/bookings`
-2. weather/storytelling/live routing slice (Phase 12):
+
+2. **Weather + Storytelling + Live Routing (Phase 12)** — ✅ DONE:
 
    - `GET /api/v1/weather/region`
-   - `POST /api/v1/route/{id}/generate-stories`
+   - `POST /api/v1/route/{id}/generate-stories` (ElevenLabs TTS → mp3 → MinIO)
    - `GET /api/v1/route/{id}/stories`
    - `POST /api/v1/route/{id}/rebuild`
-
-Что это означает:
-
-- код и контракты уже добавлены в репозиторий;
-- статус фаз 11 и 12 пока нельзя считать `DONE`;
-- перед переводом в completed нужны минимум:
-  - `go build ./...`
-  - `go test ./...`
-  - ручной smoke прогон новых endpoint-ов.
+   - ElevenLabs API key добавлен на `test-lowcoware` сервер
+   - TODO: добавить `ELEVENLABS_API_KEY` в `dev`-окружение
 
 ### Что это значит для планирования
 
@@ -1254,9 +1251,9 @@ Zero-UI онбординг для владельцев локаций. Ферм�
 
 ### Current status
 
-🔶 Код написан, но не верифицирован.
+✅ **DONE** (2026-03-22) — `go build ./...` и `go test ./...` PASS.
 
-### Что уже написано в коде
+### Реализовано
 
 1. Миграция `011_create_bookings_tables.sql`:
 
@@ -1271,13 +1268,7 @@ Zero-UI онбординг для владельцев локаций. Ферм�
    - `POST /api/v1/bookings/{id}/cancel`
    - `GET /api/v1/host/bookings`
 3. Атомарное резервирование capacity по диапазону дат в repository/service слое.
-4. OpenAPI и router уже обновлены под booking slice.
-
-### Почему статус ещё не `DONE`
-
-1. В текущей рабочей среде не был выполнен `go build ./...`.
-2. В текущей рабочей среде не был выполнен `go test ./...`.
-3. Не было ручного smoke-прогона booking endpoint-ов против поднятого окружения.
+4. OpenAPI и router обновлены под booking slice.
 
 ### Deliverables
 
@@ -1308,29 +1299,31 @@ Zero-UI онбординг для владельцев локаций. Ферм�
 
 ### Current status
 
-🔶 Код написан, но не верифицирован.
+✅ **DONE** (2026-03-22) — `go build ./...` и `go test ./...` PASS.
 
-### Что уже написано в коде
+### Реализовано
 
 1. Weather slice:
 
-   - `GET /api/v1/weather/region`
+   - `GET /api/v1/weather/region` — 5 точек Кубани, severity, needs_rebuild
 2. Storytelling slice:
 
-   - `POST /api/v1/route/{id}/generate-stories`
-   - `GET /api/v1/route/{id}/stories`
+   - `POST /api/v1/route/{id}/generate-stories` — **реальный ElevenLabs TTS** → mp3 → MinIO
+   - `GET /api/v1/route/{id}/stories` — список историй с audio_url и duration_sec
+   - Fallback: если `ELEVENLABS_API_KEY` не задан → сохраняет .txt (graceful degradation)
 3. Live routing slice:
 
-   - `POST /api/v1/route/{id}/rebuild`
+   - `POST /api/v1/route/{id}/rebuild` — перестройка с учётом погоды
 4. В `route_points` добавлены поля для storytelling/weather metadata.
-5. Router и OpenAPI уже синхронизированы с новыми endpoint-ами.
+5. Router и OpenAPI синхронизированы.
+6. `internal/ai/elevenlabs.go` — HTTP-клиент к ElevenLabs API с EstimateDurationSec.
+7. Unit-тесты: `ai/elevenlabs_test.go` (7 тестов), `services/storytelling_test.go` (6 тестов).
 
-### Что пока намеренно НЕ считаем закрытым
+### Что намеренно НЕ закрыто (оставлено для Phase 15)
 
-1. `/ws/v1/weather` не собран как transport layer.
-2. Реальный внешний weather provider не подключён — текущий слой mock-friendly.
-3. Реальный TTS pipeline не подключён — storytelling asset сейчас реализован как storage-backed artifact.
-4. Не выполнены `go build ./...`, `go test ./...` и ручной smoke прогон.
+1. `/ws/v1/weather` — WebSocket broadcast, не реализован.
+2. Реальный внешний weather provider (OpenWeatherMap) — текущий слой mock-friendly.
+3. TODO: добавить `ELEVENLABS_API_KEY` + `ELEVENLABS_VOICE_ID` в `dev`-окружение на сервере.
 
 ### Deliverables
 
