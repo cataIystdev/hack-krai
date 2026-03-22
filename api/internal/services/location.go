@@ -85,10 +85,17 @@ func (s *LocationService) Create(ctx context.Context, ownerID string, req *model
 		IsPublished:      req.IsPublished,
 		Latitude:         req.Latitude,
 		Longitude:        req.Longitude,
+		PreviewImageURL:  req.PreviewImageURL,
+		GalleryURLs:      req.GalleryURLs,
 	}
 
 	if loc.Tags == nil {
 		loc.Tags = []string{}
+	}
+
+	// Fallback: если preview не задан, берём первую фотку из галереи.
+	if loc.PreviewImageURL == "" && len(loc.GalleryURLs) > 0 {
+		loc.PreviewImageURL = loc.GalleryURLs[0]
 	}
 
 	created, err := s.repo.Create(ctx, loc)

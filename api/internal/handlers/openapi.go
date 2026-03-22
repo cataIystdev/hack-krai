@@ -1120,6 +1120,60 @@ func OpenAPISpec(baseURL string) map[string]any {
 					},
 				},
 			},
+
+			// --- 3D Gaussian Splatting ---
+			"/api/v1/host/splat": map[string]any{
+				"post": map[string]any{
+					"tags":        []string{"Локации"},
+					"summary":     "Генерация 3D-сцены (Gaussian Splatting)",
+					"description": "Запускает mock pipeline генерации 3D-сцены из видеозаписи. Выбирает релевантный .splat по категории. Роль: host / b2g_admin.",
+					"operationId": "startSplatting",
+					"security":    []map[string]any{{"BearerAuth": []string{}}},
+					"requestBody": map[string]any{
+						"required": true,
+						"content": map[string]any{
+							"multipart/form-data": map[string]any{
+								"schema": map[string]any{
+									"type":     "object",
+									"required": []string{"location_id", "video"},
+									"properties": map[string]any{
+										"location_id": map[string]any{"type": "string", "format": "uuid", "description": "UUID локации для привязки 3D-сцены"},
+										"video":       map[string]any{"type": "string", "format": "binary", "description": "Видеофайл обхода локации (mp4, webm)"},
+									},
+								},
+							},
+						},
+					},
+					"responses": map[string]any{
+						"200": map[string]any{
+							"description": "3D-сцена сгенерирована.",
+							"content": map[string]any{
+								"application/json": map[string]any{
+									"schema": map[string]any{
+										"type": "object",
+										"properties": map[string]any{
+											"success": map[string]any{"type": "boolean"},
+											"data": map[string]any{
+												"type": "object",
+												"properties": map[string]any{
+													"task_id":   map[string]any{"type": "string", "format": "uuid"},
+													"status":    map[string]any{"type": "string"},
+													"progress":  map[string]any{"type": "integer"},
+													"message":   map[string]any{"type": "string"},
+													"splat_url": map[string]any{"type": "string"},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+						"400": map[string]any{"description": "Невалидный запрос."},
+						"401": map[string]any{"description": "Отсутствует или невалидный токен."},
+						"403": map[string]any{"description": "Недостаточно прав."},
+					},
+				},
+			},
 		},
 		"components": map[string]any{
 			"schemas": map[string]any{
@@ -1383,6 +1437,8 @@ func OpenAPISpec(baseURL string) map[string]any {
 						"is_published":      map[string]any{"type": "boolean", "default": false},
 						"latitude":          map[string]any{"type": "number", "format": "double", "description": "Широта [-90, 90].", "example": 44.2878},
 						"longitude":         map[string]any{"type": "number", "format": "double", "description": "Долгота [-180, 180].", "example": 40.1763},
+						"preview_image_url": map[string]any{"type": "string", "description": "URL hero-изображения локации.", "example": "http://141.98.7.225:9102/deepkrai-media/locations/preview/my-farm.jpg"},
+						"gallery_urls":      map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "URL дополнительных фотографий для галереи."},
 					},
 					"required": []string{"name", "latitude", "longitude"},
 				},
@@ -1404,6 +1460,8 @@ func OpenAPISpec(baseURL string) map[string]any {
 						"is_published":      map[string]any{"type": "boolean"},
 						"latitude":          map[string]any{"type": "number", "format": "double"},
 						"longitude":         map[string]any{"type": "number", "format": "double"},
+						"preview_image_url": map[string]any{"type": "string", "description": "URL hero-изображения локации."},
+						"gallery_urls":      map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "URL дополнительных фотографий."},
 					},
 				},
 				"LocationListResponse": map[string]any{
@@ -1619,7 +1677,7 @@ func OpenAPISpec(baseURL string) map[string]any {
 						"name":               map[string]any{"type": "string", "description": "Название маршрута."},
 						"status":             map[string]any{"type": "string", "enum": []string{"draft", "active", "completed"}, "description": "Статус маршрута."},
 						"points":             map[string]any{"type": "array", "items": map[string]any{"$ref": "#/components/schemas/RoutePoint"}, "description": "Точки маршрута в порядке следования."},
-						"total_distance_km": map[string]any{"type": "number", "description": "Общая дистанция в км."},
+						"total_distance_km":  map[string]any{"type": "number", "description": "Общая дистанция в км."},
 						"total_duration_min": map[string]any{"type": "integer", "description": "Общее время (включая пребывание) в минутах."},
 						"transport":          map[string]any{"type": "string", "description": "Тип транспорта."},
 						"points_count":       map[string]any{"type": "integer", "description": "Количество точек."},
@@ -1633,20 +1691,20 @@ func OpenAPISpec(baseURL string) map[string]any {
 					"type":        "object",
 					"description": "Точка маршрута с расчётными данными и метаданными.",
 					"properties": map[string]any{
-						"location_id":           map[string]any{"type": "string", "format": "uuid"},
-						"name":                  map[string]any{"type": "string"},
-						"latitude":              map[string]any{"type": "number"},
-						"longitude":             map[string]any{"type": "number"},
-						"category":              map[string]any{"type": "string", "description": "Категория локации."},
-						"preview_image_url":     map[string]any{"type": "string", "description": "URL hero-изображения."},
-						"order":                 map[string]any{"type": "integer", "description": "Порядковый номер."},
-						"distance_from_prev_km": map[string]any{"type": "number", "description": "Расстояние от предыдущей точки в км."},
+						"location_id":            map[string]any{"type": "string", "format": "uuid"},
+						"name":                   map[string]any{"type": "string"},
+						"latitude":               map[string]any{"type": "number"},
+						"longitude":              map[string]any{"type": "number"},
+						"category":               map[string]any{"type": "string", "description": "Категория локации."},
+						"preview_image_url":      map[string]any{"type": "string", "description": "URL hero-изображения."},
+						"order":                  map[string]any{"type": "integer", "description": "Порядковый номер."},
+						"distance_from_prev_km":  map[string]any{"type": "number", "description": "Расстояние от предыдущей точки в км."},
 						"duration_from_prev_min": map[string]any{"type": "integer", "description": "Время от предыдущей точки в минутах."},
-						"stay_duration_min":     map[string]any{"type": "integer", "description": "Рекомендуемое время пребывания в минутах."},
-						"day_number":            map[string]any{"type": "integer", "description": "Номер дня поездки."},
-						"time_slot":             map[string]any{"type": "string", "enum": []string{"morning", "afternoon", "evening"}, "description": "Тайм-слот."},
-						"target_audience":       map[string]any{"type": "string", "enum": []string{"all", "adults", "children"}, "description": "Целевая аудитория."},
-						"vibe_score":            map[string]any{"type": "number", "format": "float", "description": "Vibe-score (0.0-1.0)."},
+						"stay_duration_min":      map[string]any{"type": "integer", "description": "Рекомендуемое время пребывания в минутах."},
+						"day_number":             map[string]any{"type": "integer", "description": "Номер дня поездки."},
+						"time_slot":              map[string]any{"type": "string", "enum": []string{"morning", "afternoon", "evening"}, "description": "Тайм-слот."},
+						"target_audience":        map[string]any{"type": "string", "enum": []string{"all", "adults", "children"}, "description": "Целевая аудитория."},
+						"vibe_score":             map[string]any{"type": "number", "format": "float", "description": "Vibe-score (0.0-1.0)."},
 					},
 				},
 			},

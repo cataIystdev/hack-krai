@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/url"
 	"path"
+	"strings"
 	"time"
 
 	"github.com/minio/minio-go/v7"
@@ -21,6 +22,7 @@ import (
 // Обеспечивает загрузку файлов, генерацию публичных URL и удаление объектов.
 type StorageService struct {
 	minioClient *database.MinIOClient
+	publicURL   string // публичный базовый URL (например http://141.98.7.225:9102)
 	logger      *zap.Logger
 }
 
@@ -35,15 +37,17 @@ type UploadResult struct {
 	// Size — размер загруженного файла в байтах.
 	Size int64 `json:"size"`
 
-	// URL — публичный URL для доступа к файлу (presigned URL, TTL 24 часа).
+	// URL — публичный URL для доступа к файлу.
 	URL string `json:"url"`
 }
 
 // NewStorageService создаёт новый сервис хранилища.
-// Принимает клиент MinIO и логгер для записи операций.
-func NewStorageService(minioClient *database.MinIOClient, logger *zap.Logger) *StorageService {
+// publicURL — публичный базовый URL для файлов (например http://141.98.7.225:9102).
+// Если пуст — используются presigned URL через внутренний MinIO endpoint.
+func NewStorageService(minioClient *database.MinIOClient, publicURL string, logger *zap.Logger) *StorageService {
 	return &StorageService{
 		minioClient: minioClient,
+		publicURL:   strings.TrimRight(publicURL, "/"),
 		logger:      logger,
 	}
 }
@@ -79,25 +83,35 @@ func (s *StorageService) Upload(ctx context.Context, objectName string, reader i
 		return nil, fmt.Errorf("ошибка загрузки файла в MinIO: %w", err)
 	}
 
-	// Генерация presigned URL для доступа к загруженному файлу.
-	presignedURL, err := s.GeneratePresignedURL(ctx, objectName, 24*time.Hour)
-	if err != nil {
-		s.logger.Warn("не удалось сгенерировать presigned URL, используется прямой путь",
-			zap.Error(err),
-		)
-		presignedURL = fmt.Sprintf("/%s/%s", s.minioClient.Bucket, objectName)
+	// Генерация публичного URL.
+	var fileURL string
+	if s.publicURL != "" {
+		// Прямой публичный URL через nginx/reverse proxy.
+		fileURL = fmt.Sprintf("%s/%s/%s", s.publicURL, s.minioClient.Bucket, objectName)
+	} else {
+		// Fallback: presigned URL через внутренний MinIO endpoint.
+		presignedURL, err := s.GeneratePresignedURL(ctx, objectName, 24*time.Hour)
+		if err != nil {
+			s.logger.Warn("не удалось сгенерировать presigned URL, используется прямой путь",
+				zap.Error(err),
+			)
+			fileURL = fmt.Sprintf("/%s/%s", s.minioClient.Bucket, objectName)
+		} else {
+			fileURL = presignedURL
+		}
 	}
 
 	s.logger.Info("файл успешно загружен",
 		zap.String("object", objectName),
 		zap.Int64("size", info.Size),
+		zap.String("url", fileURL),
 	)
 
 	return &UploadResult{
 		ObjectName: objectName,
 		Bucket:     s.minioClient.Bucket,
 		Size:       info.Size,
-		URL:        presignedURL,
+		URL:        fileURL,
 	}, nil
 }
 

@@ -131,6 +131,8 @@ type CreateLocationRequest struct {
 	IsPublished      bool     `json:"is_published"`
 	Latitude         float64  `json:"latitude"`
 	Longitude        float64  `json:"longitude"`
+	PreviewImageURL  string   `json:"preview_image_url"`
+	GalleryURLs      []string `json:"gallery_urls"`
 }
 
 // Validate проверяет корректность данных для создания локации.
@@ -173,6 +175,8 @@ type UpdateLocationRequest struct {
 	IsPublished      *bool    `json:"is_published,omitempty"`
 	Latitude         *float64 `json:"latitude,omitempty"`
 	Longitude        *float64 `json:"longitude,omitempty"`
+	PreviewImageURL  *string  `json:"preview_image_url,omitempty"`
+	GalleryURLs      []string `json:"gallery_urls,omitempty"`
 }
 
 // LocationFilter — параметры фильтрации и пространственного поиска локаций.
