@@ -1,0 +1,45 @@
+name: CI — Build & Test
+
+on:
+  push:
+    branches:
+      - test-lowcoware
+      - dev
+      - prod
+  pull_request:
+    branches:
+      - test-lowcoware
+      - dev
+      - prod
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./api
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: ./api/go.mod
+          cache-dependency-path: ./api/go.sum
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Verify dependencies
+        run: go mod verify
+
+      - name: Build
+        run: go build ./...
+
+      - name: Run tests
+        run: go test ./... -v -count=1
+
+      - name: Run tests with race detector
+        run: go test ./... -race -count=1
