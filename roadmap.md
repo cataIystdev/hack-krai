@@ -61,20 +61,20 @@
 | Функционал | Статус | Комментарий |
 |---|---|---|
 | Фундамент БД | ✅ DONE | Поля `access_level`, `karma`, `karma_threshold` существуют в схемах. |
-| Логика отзывов и начисления кармы | ❌ TODO | Отзывов и динамического изменения кармы юзера нет. Фильтрации скрытых локаций по карме нет в Map API. |
+| Логика отзывов и начисления кармы | ✅ DONE | Отзывы, начисление кармы и API реализованы. |
 
 ### 📊 Фича 8: B2G Аналитический дашборд
 | Функционал | Статус | Комментарий |
 |---|---|---|
 | Инфраструктура БД (ClickHouse) | ✅ DONE | Инфраструктура развернута. |
-| Событийная телеметрия (Стрим ивентов) | ❌ TODO | Redis Streams в ClickHouse Producer не написан. |
-| B2G Endpoints (Heatmap, Predictions) | ❌ TODO | Эндпоинты аналитики не существуют. |
+| Событийная телеметрия (Стрим ивентов) | ✅ DONE | Реализовано: `telemetry_service` через Redis Streams + ClickHouse консьюмер. |
+| B2G Endpoints (Heatmap, Predictions) | ✅ DONE | Эндпоинты агрегации (Heatmap, Predictions) реализованы. |
 
 ### 📡 Фича 9: PWA Офлайн-режим
 | Функционал | Статус | Комментарий |
 |---|---|---|
-| Offline-bundle сборка | ❌ TODO | `GET /api/v1/route/{id}/offline-bundle` не реализован. |
-| Sync endpoint | ❌ TODO | `POST /api/v1/sync` не реализован. |
+| Offline-bundle сборка | ✅ DONE | `GET /api/v1/route/{id}/offline-bundle` реализован. |
+| Sync endpoint | ✅ DONE | `POST /api/v1/sync` реализован. |
 
 ---
 
@@ -86,18 +86,18 @@
 - **Privacy & Concurrency в Trips**: Доделать строгую защиту доступов (members / join / details) и исправить гонки при параллельном вступлении в группу.
 - **Merged Vibe Vector**: Дописать логику смешивания векторов участников группы и подбор маршрута на основе "компромиссного" вектора.
 
-### 2. Социалка и Геймификация (Phase 13)
-- Написать `review-service` (создание отзывов).
-- Реализовать механизм обновления `karma` юзера на основе отзывов.
-- Добавить в `map-service` фильтрацию `hidden` локаций, если карма меньше `karma_threshold`.
+### ✅ 2. Социалка и Геймификация (Phase 13)
+- [x] Написать `review-service` (создание отзывов).
+- [x] Реализовать механизм обновления `karma` юзера на основе отзывов.
+- [x] Опционально: фильтрация `hidden` локаций в `map-service`.
 
 ### 3. Инфраструктура реального времени
 - Реализовать WebSocket Hub для `/ws/v1/weather` и `/ws/v1/notifications` (PubSub через Redis).
 - Дописать генератор погоды (чтобы `weather-service` пушил апдейты в каналы).
 
-### 4. Data & Analytics (Phase 14)
-- Написать воркер-генератор событий (`event-ingestion` middleware + ClickHouse consumer) для стриминга в аналитику.
-- Сделать аналитические эндпоинты для B2G (`/analytics/heatmap`, `/analytics/predictions`).
+### ✅ 4. Data & Analytics (Phase 14)
+- [x] Написать воркер-генератор событий (`event-ingestion` middleware + ClickHouse consumer) для стриминга в аналитику.
+- [x] Сделать аналитические эндпоинты для B2G (`/analytics/heatmap`, `/analytics/predictions`).
 
 ### 5. Offline Sync (Phase 15)
 - Собирать ZIP-bundle маршрута на сервере (`/api/v1/route/{id}/offline-bundle`).

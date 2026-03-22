@@ -34,6 +34,8 @@ func SetupRoutes(
 	storytellingService *services.StorytellingService,
 	reviewService *services.ReviewService,
 	analyticsHandler *AnalyticsHandler,
+	offlineHandler *OfflineHandler,
+	syncHandler *SyncHandler,
 	logger *zap.Logger,
 ) {
 	// Корневой маршрут — базовая информация о сервере.
@@ -160,6 +162,10 @@ func SetupRoutes(
 		v1.Post("/locations/:id/reviews", jwtMiddleware, reviewHandler.Create)
 	}
 
+	if syncHandler != nil {
+		v1.Post("/sync", jwtMiddleware, syncHandler.SyncOfflineData)
+	}
+
 	// Поездки — защищённые эндпоинты (создание, детали, invite, участники, маршрут).
 	tripsProtected := v1.Group("/trips", jwtMiddleware)
 	tripsProtected.Get("/", tripHandler.ListTrips)
@@ -184,6 +190,10 @@ func SetupRoutes(
 		routeGroup.Post("/:id/generate-stories", routeHandler.GenerateStories)
 		routeGroup.Get("/:id/stories", routeHandler.GetStories)
 		routeGroup.Post("/:id/rebuild", routeHandler.Rebuild)
+		
+		if offlineHandler != nil {
+			routeGroup.Get("/:id/offline-bundle", offlineHandler.DownloadOfflineBundle)
+		}
 
 		// Trip-aware построение маршрута.
 		tripsProtected.Post("/:id/build-route", routeHandler.BuildTripRoute)

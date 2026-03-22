@@ -116,17 +116,26 @@ func main() {
 	}
 
 	// Репозиторий маршрутов.
+	// Репозиторий маршрутов.
 	var routeRepo *database.RouteRepository
 	if dbManager.Postgres != nil {
 		routeRepo = database.NewRouteRepository(dbManager.Postgres, logger)
 	}
 
-	// Сервис маршрутов (RouteService). Принимает все зависимости для trip-aware режима.
 	var routeService *services.RouteService
-	if locationRepo != nil {
+	var offlineHandler *handlers.OfflineHandler
+	if dbManager.Postgres != nil {
+		// Для генерации историй нужен storytellingService, он будет ниже.
+		// Но routeService сам по себе использует vibeRepo, tripRepo, locationRepo
+		// vibeRepo уже инициализирован выше, если Qdrant доступен.
 		routeService = services.NewRouteService(locationRepo, tripRepo, routeRepo, vibeRepo, logger)
+		
+		offlineService := services.NewOfflineService(routeService, locationService, logger)
+		offlineHandler = handlers.NewOfflineHandler(offlineService, logger)
+		
+		logger.Info("сервис маршрутов инициализирован")
 	}
-
+	
 	// Booking MVP (slots + bookings).
 	var bookingService *services.BookingService
 	if dbManager.Postgres != nil && locationRepo != nil {
@@ -227,7 +236,6 @@ func main() {
 	var analyticsHandler *handlers.AnalyticsHandler
 	if dbManager.Redis != nil {
 		telemetryService = services.NewTelemetryService(dbManager.Redis, logger)
-		_ = telemetryService // TODO: Интегрировать в роутинг
 		logger.Info("сервис телеметрии инициализирован")
 	}
 	if dbManager.Redis != nil && dbManager.ClickHouse != nil {
@@ -240,7 +248,13 @@ func main() {
 		logger.Info("сервис и воркер аналитики B2G инициализированы")
 	}
 
-	// TODO: Интегрировать telemetryService.PushEvent() в роутинг / бронирование
+	// --- 4.10 Офлайн Синхронизация (Phase 15) ---
+	var syncHandler *handlers.SyncHandler
+	if dbManager.Postgres != nil {
+		syncService := services.NewSyncService(reviewService, telemetryService, logger)
+		syncHandler = handlers.NewSyncHandler(syncService, logger)
+		logger.Info("сервис offline-синхронизации инициализирован")
+	}
 
 	// --- 5. Создание HTTP-сервера Fiber ---
 	app := fiber.New(fiber.Config{
@@ -273,7 +287,7 @@ func main() {
 	app.Use(middleware.NewCORS())
 
 	// --- 7. Регистрация маршрутов ---
-	handlers.SetupRoutes(app, dbManager, storageService, authService, jwtService, userRepo, locationService, tripService, vibeService, mapService, routeService, onboardingService, bookingService, weatherService, storytellingService, reviewService, analyticsHandler, logger)
+	handlers.SetupRoutes(app, dbManager, storageService, authService, jwtService, userRepo, locationService, tripService, vibeService, mapService, routeService, onboardingService, bookingService, weatherService, storytellingService, reviewService, analyticsHandler, offlineHandler, syncHandler, logger)
 
 	// --- 7.5 Bootstrap демо-пользователей ---
 	// Идемпотентное создание предустановленных аккаунтов для тестирования и интеграции.
